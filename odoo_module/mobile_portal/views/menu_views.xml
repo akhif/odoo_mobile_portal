@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Mobile Portal Root Menu -->
+    <menuitem
+        id="mobile_portal_menu_root"
+        name="Mobile Portal"
+        web_icon="mobile_portal,static/description/icon.png"
+        sequence="100"/>
+
+    <!-- HR Submenu -->
+    <menuitem
+        id="mobile_portal_menu_hr"
+        name="HR"
+        parent="mobile_portal_menu_root"
+        sequence="10"/>
+
+    <menuitem
+        id="mobile_portal_menu_hr_attendance"
+        name="Remote Attendance"
+        parent="mobile_portal_menu_hr"
+        action="hr_remote_attendance_action"
+        sequence="10"/>
+
+    <menuitem
+        id="mobile_portal_menu_hr_documents"
+        name="Document Requests"
+        parent="mobile_portal_menu_hr"
+        action="hr_employee_document_request_action"
+        sequence="20"/>
+
+    <menuitem
+        id="mobile_portal_menu_hr_documents_pending"
+        name="Pending Approvals"
+        parent="mobile_portal_menu_hr"
+        action="hr_employee_document_request_pending_action"
+        groups="hr.group_hr_manager"
+        sequence="25"/>
+
+    <menuitem
+        id="mobile_portal_menu_hr_document_types"
+        name="Document Types"
+        parent="mobile_portal_menu_hr"
+        action="hr_document_type_action"
+        groups="hr.group_hr_manager"
+        sequence="30"/>
+
+    <!-- Purchase Submenu -->
+    <menuitem
+        id="mobile_portal_menu_purchase"
+        name="Purchase"
+        parent="mobile_portal_menu_root"
+        sequence="20"/>
+
+    <menuitem
+        id="mobile_portal_menu_purchase_market_prices"
+        name="Market Prices"
+        parent="mobile_portal_menu_purchase"
+        action="purchase_market_price_action"
+        sequence="10"/>
+
+    <menuitem
+        id="mobile_portal_menu_purchase_market_prices_today"
+        name="Today's Prices"
+        parent="mobile_portal_menu_purchase"
+        action="purchase_market_price_latest_action"
+        sequence="20"/>
+
+    <!-- Configuration Submenu -->
+    <menuitem
+        id="mobile_portal_menu_config"
+        name="Configuration"
+        parent="mobile_portal_menu_root"
+        groups="base.group_system"
+        sequence="100"/>
+
+    <menuitem
+        id="mobile_portal_menu_config_document_types"
+        name="HR Document Types"
+        parent="mobile_portal_menu_config"
+        action="hr_document_type_action"
+        sequence="10"/>
+
+    <!-- Also add Remote Attendance to HR app menu -->
+    <menuitem
+        id="hr_menu_remote_attendance"
+        name="Remote Attendance"
+        parent="hr_attendance.menu_hr_attendance_root"
+        action="hr_remote_attendance_action"
+        sequence="15"/>
+
+    <!-- Add Document Requests to HR app menu -->
+    <menuitem
+        id="hr_menu_document_requests"
+        name="Document Requests"
+        parent="hr.menu_human_resources_configuration"
+        action="hr_employee_document_request_action"
+        sequence="50"/>
+
+    <!-- Add Market Prices to Purchase app menu -->
+    <menuitem
+        id="purchase_menu_market_prices"
+        name="Market Prices"
+        parent="purchase.menu_procurement_management"
+        action="purchase_market_price_action"
+        sequence="50"/>
+
+    <!-- Extend res.users form to show mobile portal fields -->
+    <record id="view_users_form_mobile_portal" model="ir.ui.view">
+        <field name="name">res.users.form.mobile_portal</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='preferences']" position="after">
+                <page string="Mobile Portal" name="mobile_portal">
+                    <group>
+                        <group string="Mobile App Access">
+                            <field name="mobile_hr_access"/>
+                            <field name="mobile_sales_access"/>
+                            <field name="mobile_purchase_access"/>
+                            <field name="mobile_project_access"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Market Price Tree View -->
+    <record id="purchase_market_price_view_tree" model="ir.ui.view">
+        <field name="name">purchase.market.price.tree</field>
+        <field name="model">purchase.market.price</field>
+        <field name="arch" type="xml">
+            <tree string="Market Prices" decoration-success="price_change > 0" decoration-danger="price_change &lt; 0">
+                <field name="date"/>
+                <field name="product_id"/>
+                <field name="supplier_id" optional="show"/>
+                <field name="price" widget="monetary"/>
+                <field name="currency_id" column_invisible="True"/>
+                <field name="previous_price" widget="monetary" optional="show"/>
+                <field name="price_change" widget="percentage" optional="show"/>
+                <field name="user_id"/>
+                <field name="notes" optional="hide"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Market Price Form View -->
+    <record id="purchase_market_price_view_form" model="ir.ui.view">
+        <field name="name">purchase.market.price.form</field>
+        <field name="model">purchase.market.price</field>
+        <field name="arch" type="xml">
+            <form string="Market Price">
+                <sheet>
+                    <group>
+                        <group string="Product">
+                            <field name="product_id"/>
+                            <field name="product_tmpl_id" invisible="1"/>
+                            <field name="supplier_id"/>
+                        </group>
+                        <group string="Price">
+                            <field name="price"/>
+                            <field name="currency_id"/>
+                            <field name="date"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Price Comparison">
+                            <field name="previous_price"/>
+                            <field name="price_change" widget="percentage"/>
+                        </group>
+                        <group string="Recording Info">
+                            <field name="user_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <group string="Notes">
+                        <field name="notes" nolabel="1"/>
+                    </group>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Market Price Search View -->
+    <record id="purchase_market_price_view_search" model="ir.ui.view">
+        <field name="name">purchase.market.price.search</field>
+        <field name="model">purchase.market.price</field>
+        <field name="arch" type="xml">
+            <search string="Search Market Prices">
+                <field name="product_id"/>
+                <field name="supplier_id"/>
+                <field name="user_id"/>
+                <filter string="Today" name="filter_today" domain="[('date', '=', context_today())]"/>
+                <filter string="This Week" name="filter_week" domain="[('date', '>=', (context_today() + relativedelta(weeks=-1, weekday=0)).strftime('%Y-%m-%d'))]"/>
+                <filter string="This Month" name="filter_month" domain="[('date', '>=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter string="Price Increased" name="filter_increase" domain="[('price_change', '>', 0)]"/>
+                <filter string="Price Decreased" name="filter_decrease" domain="[('price_change', '&lt;', 0)]"/>
+                <separator/>
+                <filter string="My Entries" name="filter_my" domain="[('user_id', '=', uid)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Product" name="groupby_product" context="{'group_by': 'product_id'}"/>
+                    <filter string="Supplier" name="groupby_supplier" context="{'group_by': 'supplier_id'}"/>
+                    <filter string="Date" name="groupby_date" context="{'group_by': 'date:month'}"/>
+                    <filter string="User" name="groupby_user" context="{'group_by': 'user_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Market Price Graph View -->
+    <record id="purchase_market_price_view_graph" model="ir.ui.view">
+        <field name="name">purchase.market.price.graph</field>
+        <field name="model">purchase.market.price</field>
+        <field name="arch" type="xml">
+            <graph string="Market Price Trends" type="line">
+                <field name="date" type="row"/>
+                <field name="price" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Market Price Pivot View -->
+    <record id="purchase_market_price_view_pivot" model="ir.ui.view">
+        <field name="name">purchase.market.price.pivot</field>
+        <field name="model">purchase.market.price</field>
+        <field name="arch" type="xml">
+            <pivot string="Market Price Analysis">
+                <field name="product_id" type="row"/>
+                <field name="date" type="col" interval="month"/>
+                <field name="price" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Market Price Action -->
+    <record id="purchase_market_price_action" model="ir.actions.act_window">
+        <field name="name">Market Prices</field>
+        <field name="res_model">purchase.market.price</field>
+        <field name="view_mode">tree,form,graph,pivot</field>
+        <field name="search_view_id" ref="purchase_market_price_view_search"/>
+        <field name="context">{'search_default_filter_month': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Record market prices
+            </p>
+            <p>
+                Track market prices for products over time. Prices can be recorded from the mobile app.
+            </p>
+        </field>
+    </record>
+
+    <!-- Latest Prices Action -->
+    <record id="purchase_market_price_latest_action" model="ir.actions.act_window">
+        <field name="name">Latest Market Prices</field>
+        <field name="res_model">purchase.market.price</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="purchase_market_price_view_search"/>
+        <field name="domain">[('date', '=', context_today())]</field>
+        <field name="context">{'search_default_filter_today': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No market prices recorded today
+            </p>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Mobile Portal Module Category -->
+        <record id="module_category_mobile_portal" model="ir.module.category">
+            <field name="name">Mobile Portal</field>
+            <field name="description">Mobile Portal Access Control</field>
+            <field name="sequence">100</field>
+        </record>
+
+        <!-- Mobile Portal Security Groups -->
+        <record id="group_mobile_user" model="res.groups">
+            <field name="name">Mobile User</field>
+            <field name="category_id" ref="module_category_mobile_portal"/>
+            <field name="comment">Basic mobile portal access - can use mobile app features</field>
+        </record>
+
+        <record id="group_mobile_hr" model="res.groups">
+            <field name="name">Mobile HR Access</field>
+            <field name="category_id" ref="module_category_mobile_portal"/>
+            <field name="implied_ids" eval="[(4, ref('group_mobile_user'))]"/>
+            <field name="comment">Access to HR module in mobile app (payslips, leaves, attendance)</field>
+        </record>
+
+        <record id="group_mobile_sales" model="res.groups">
+            <field name="name">Mobile Sales Access</field>
+            <field name="category_id" ref="module_category_mobile_portal"/>
+            <field name="implied_ids" eval="[(4, ref('group_mobile_user'))]"/>
+            <field name="comment">Access to Sales module in mobile app (invoices, customer credit)</field>
+        </record>
+
+        <record id="group_mobile_purchase" model="res.groups">
+            <field name="name">Mobile Purchase Access</field>
+            <field name="category_id" ref="module_category_mobile_portal"/>
+            <field name="implied_ids" eval="[(4, ref('group_mobile_user'))]"/>
+            <field name="comment">Access to Purchase module in mobile app (suppliers, market prices)</field>
+        </record>
+
+        <record id="group_mobile_project" model="res.groups">
+            <field name="name">Mobile Project Access</field>
+            <field name="category_id" ref="module_category_mobile_portal"/>
+            <field name="implied_ids" eval="[(4, ref('group_mobile_user'))]"/>
+            <field name="comment">Access to Project module in mobile app (tasks, job orders)</field>
+        </record>
+
+        <record id="group_mobile_manager" model="res.groups">
+            <field name="name">Mobile Portal Manager</field>
+            <field name="category_id" ref="module_category_mobile_portal"/>
+            <field name="implied_ids" eval="[(4, ref('group_mobile_hr')), (4, ref('group_mobile_sales')), (4, ref('group_mobile_purchase')), (4, ref('group_mobile_project'))]"/>
+            <field name="comment">Full access to all mobile portal features</field>
+        </record>
+
+        <!-- Record Rules -->
+
+        <!-- HR Remote Attendance: Employees can only see their own records -->
+        <record id="hr_remote_attendance_employee_rule" model="ir.rule">
+            <field name="name">Remote Attendance: Employee sees own records</field>
+            <field name="model_id" ref="model_hr_remote_attendance"/>
+            <field name="domain_force">[('employee_id.user_id', '=', user.id)]</field>
+            <field name="groups" eval="[(4, ref('group_mobile_hr'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <!-- HR Remote Attendance: HR managers can see all records -->
+        <record id="hr_remote_attendance_manager_rule" model="ir.rule">
+            <field name="name">Remote Attendance: HR Manager sees all</field>
+            <field name="model_id" ref="model_hr_remote_attendance"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('hr.group_hr_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <!-- HR Employee Document Request: Employees can only see their own -->
+        <record id="hr_employee_document_request_employee_rule" model="ir.rule">
+            <field name="name">Document Request: Employee sees own records</field>
+            <field name="model_id" ref="model_hr_employee_document_request"/>
+            <field name="domain_force">[('employee_id.user_id', '=', user.id)]</field>
+            <field name="groups" eval="[(4, ref('group_mobile_hr'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <!-- HR Employee Document Request: HR managers can see all -->
+        <record id="hr_employee_document_request_manager_rule" model="ir.rule">
+            <field name="name">Document Request: HR Manager sees all</field>
+            <field name="model_id" ref="model_hr_employee_document_request"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('hr.group_hr_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <!-- Purchase Market Price: All purchase users can read, only own records can modify -->
+        <record id="purchase_market_price_user_rule" model="ir.rule">
+            <field name="name">Market Price: User sees all, edits own</field>
+            <field name="model_id" ref="model_purchase_market_price"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_mobile_purchase'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <record id="purchase_market_price_own_rule" model="ir.rule">
+            <field name="name">Market Price: Edit own records</field>
+            <field name="model_id" ref="model_purchase_market_price"/>
+            <field name="domain_force">[('user_id', '=', user.id)]</field>
+            <field name="groups" eval="[(4, ref('group_mobile_purchase'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <!-- Purchase Market Price: Purchase managers have full access -->
+        <record id="purchase_market_price_manager_rule" model="ir.rule">
+            <field name="name">Market Price: Manager full access</field>
+            <field name="model_id" ref="model_purchase_market_price"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('purchase.group_purchase_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+    </data>
+</odoo>

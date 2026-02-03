@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default HR Document Types -->
+        <record id="hr_document_type_id_card" model="hr.document.type">
+            <field name="name">ID Card</field>
+            <field name="description">National ID or Government-issued identification</field>
+            <field name="sequence">10</field>
+        </record>
+
+        <record id="hr_document_type_passport" model="hr.document.type">
+            <field name="name">Passport</field>
+            <field name="description">Valid passport document</field>
+            <field name="sequence">20</field>
+        </record>
+
+        <record id="hr_document_type_driving_license" model="hr.document.type">
+            <field name="name">Driving License</field>
+            <field name="description">Valid driving license</field>
+            <field name="sequence">30</field>
+        </record>
+
+        <record id="hr_document_type_educational" model="hr.document.type">
+            <field name="name">Educational Certificate</field>
+            <field name="description">Degree, diploma, or educational certificates</field>
+            <field name="sequence">40</field>
+        </record>
+
+        <record id="hr_document_type_experience" model="hr.document.type">
+            <field name="name">Experience Certificate</field>
+            <field name="description">Previous employment experience letters</field>
+            <field name="sequence">50</field>
+        </record>
+
+        <record id="hr_document_type_medical" model="hr.document.type">
+            <field name="name">Medical Certificate</field>
+            <field name="description">Health or medical fitness certificates</field>
+            <field name="sequence">60</field>
+        </record>
+
+        <record id="hr_document_type_bank" model="hr.document.type">
+            <field name="name">Bank Details</field>
+            <field name="description">Bank account details or cancelled cheque</field>
+            <field name="sequence">70</field>
+        </record>
+
+        <record id="hr_document_type_address_proof" model="hr.document.type">
+            <field name="name">Address Proof</field>
+            <field name="description">Utility bill, rental agreement, or other address proof</field>
+            <field name="sequence">80</field>
+        </record>
+
+        <record id="hr_document_type_photo" model="hr.document.type">
+            <field name="name">Photograph</field>
+            <field name="description">Passport-sized photograph</field>
+            <field name="sequence">90</field>
+        </record>
+
+        <record id="hr_document_type_other" model="hr.document.type">
+            <field name="name">Other Document</field>
+            <field name="description">Any other HR-related document</field>
+            <field name="sequence">100</field>
+        </record>
+
+        <!-- Set default mobile access for admin user -->
+        <record id="base.user_admin" model="res.users">
+            <field name="mobile_hr_access">True</field>
+            <field name="mobile_sales_access">True</field>
+            <field name="mobile_purchase_access">True</field>
+            <field name="mobile_project_access">True</field>
+        </record>
+
+    </data>
+</odoo>
