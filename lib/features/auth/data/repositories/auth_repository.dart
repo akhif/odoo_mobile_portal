@@ -59,15 +59,39 @@ class AuthRepository {
     // Get user roles based on groups
     final roles = await _fetchUserRoles(authResult.groupIds);
 
+    // Get employee info - try multiple strategies
+    int? employeeId = authResult.employeeId != null
+        ? int.tryParse(authResult.employeeId!)
+        : null;
+    String? employeeName = authResult.employeeName;
+
+    // If employee ID not found from auth, try to find it directly
+    if (employeeId == null) {
+      try {
+        final employees = await _rpcClient.searchRead(
+          model: 'hr.employee',
+          domain: [
+            ['user_id', '=', authResult.uid],
+          ],
+          fields: ['id', 'name'],
+          limit: 1,
+        );
+        if (employees.isNotEmpty) {
+          employeeId = employees[0]['id'] as int;
+          employeeName = employees[0]['name'] as String?;
+        }
+      } catch (_) {
+        // hr.employee access denied - that's OK
+      }
+    }
+
     // Create user model
     final user = UserModel(
       id: authResult.uid,
       username: username,
       name: authResult.name,
-      employeeId: authResult.employeeId != null
-          ? int.tryParse(authResult.employeeId!)
-          : null,
-      employeeName: authResult.employeeName,
+      employeeId: employeeId,
+      employeeName: employeeName,
       roles: roles,
     );
 
@@ -86,98 +110,105 @@ class AuthRepository {
 
   // Fetch user roles based on group IDs
   Future<UserRoles> _fetchUserRoles(List<int> groupIds) async {
+    bool hasHrAccess = false;
     bool hasSalesAccess = false;
     bool hasPurchaseAccess = false;
     bool hasProjectAccess = false;
+    bool foundMobileGroups = false;
 
     // First, try to fetch groups if we have group IDs
     if (groupIds.isNotEmpty) {
       try {
-        final mobileGroups = await _rpcClient.searchRead(
+        final userGroups = await _rpcClient.searchRead(
           model: AppConstants.modelGroups,
           domain: [
             ['id', 'in', groupIds],
           ],
-          fields: ['name', 'full_name'],
+          fields: ['name', 'full_name', 'category_id'],
         );
 
-        for (final group in mobileGroups) {
+        for (final group in userGroups) {
           final fullName = group['full_name']?.toString().toLowerCase() ?? '';
           final name = group['name']?.toString().toLowerCase() ?? '';
 
-          // Check for sales access
-          if (fullName.contains('sales') ||
-              name.contains('sales') ||
-              name.contains('salesman') ||
-              name.contains('salesperson') ||
-              fullName.contains('sale_salesman') ||
-              fullName.contains('sale_manager') ||
-              fullName.contains('account.group_account')) {
+          // Priority 1: Check for Mobile Portal specific groups
+          // These are the groups from our custom mobile_portal Odoo module
+          if (fullName.contains('mobile') || name.contains('mobile')) {
+            foundMobileGroups = true;
+            if (name.contains('hr') || fullName.contains('hr')) {
+              hasHrAccess = true;
+            }
+            if (name.contains('sales') || fullName.contains('sales')) {
+              hasSalesAccess = true;
+            }
+            if (name.contains('purchase') || fullName.contains('purchase')) {
+              hasPurchaseAccess = true;
+            }
+            if (name.contains('project') || fullName.contains('project')) {
+              hasProjectAccess = true;
+            }
+          }
+        }
+
+        // If mobile portal groups were found, use ONLY those for access control
+        // Don't fall back to standard Odoo groups - mobile access should be explicit
+        if (foundMobileGroups) {
+          return UserRoles(
+            hasHrAccess: hasHrAccess,
+            hasSalesAccess: hasSalesAccess,
+            hasPurchaseAccess: hasPurchaseAccess,
+            hasProjectAccess: hasProjectAccess,
+            groupIds: groupIds,
+          );
+        }
+
+        // No mobile portal groups found - fall back to standard Odoo group detection
+        for (final group in userGroups) {
+          final fullName = group['full_name']?.toString().toLowerCase() ?? '';
+          final name = group['name']?.toString().toLowerCase() ?? '';
+
+          // Check for standard Sales groups
+          if (fullName.contains('sales_team.group_sale') ||
+              fullName.contains('sale.group') ||
+              name == 'salesman' ||
+              name == 'sales manager') {
             hasSalesAccess = true;
           }
 
-          // Check for purchase access
-          if (fullName.contains('purchase') || name.contains('purchase')) {
+          // Check for standard Purchase groups
+          if (fullName.contains('purchase.group_purchase') ||
+              name == 'purchase user' ||
+              name == 'purchase manager') {
             hasPurchaseAccess = true;
           }
 
-          // Check for project access
-          if (fullName.contains('project') || name.contains('project')) {
+          // Check for standard Project groups
+          if (fullName.contains('project.group_project') ||
+              name == 'project user' ||
+              name == 'project manager') {
             hasProjectAccess = true;
+          }
+
+          // Check for standard HR groups
+          if (fullName.contains('hr.group_hr') ||
+              name.contains('employee') ||
+              name.contains('hr user')) {
+            hasHrAccess = true;
           }
         }
       } catch (_) {
-        // Groups not accessible, try model access detection below
+        // Groups not accessible
       }
     }
 
-    // If we couldn't determine roles from groups, try model access detection
-    // This is useful for portal users who can't read res.groups
-    if (!hasSalesAccess && !hasPurchaseAccess && !hasProjectAccess) {
-      // Try to detect sales access by checking if user can read invoices
-      try {
-        await _rpcClient.searchRead(
-          model: AppConstants.modelInvoice,
-          domain: [
-            ['move_type', '=', 'out_invoice'],
-          ],
-          fields: ['id'],
-          limit: 1,
-        );
-        hasSalesAccess = true;
-      } catch (_) {
-        // No sales access
-      }
-
-      // Try to detect purchase access by checking if user can read purchase orders
-      try {
-        await _rpcClient.searchRead(
-          model: 'purchase.order',
-          domain: [],
-          fields: ['id'],
-          limit: 1,
-        );
-        hasPurchaseAccess = true;
-      } catch (_) {
-        // No purchase access
-      }
-
-      // Try to detect project access by checking if user can read projects/tasks
-      try {
-        await _rpcClient.searchRead(
-          model: 'project.task',
-          domain: [],
-          fields: ['id'],
-          limit: 1,
-        );
-        hasProjectAccess = true;
-      } catch (_) {
-        // No project access
-      }
+    // If no groups found at all, give HR access by default
+    // (all employees should have basic HR access)
+    if (!hasHrAccess && !hasSalesAccess && !hasPurchaseAccess && !hasProjectAccess) {
+      hasHrAccess = true;
     }
 
     return UserRoles(
-      hasHrAccess: true, // All employees have HR access
+      hasHrAccess: hasHrAccess,
       hasSalesAccess: hasSalesAccess,
       hasPurchaseAccess: hasPurchaseAccess,
       hasProjectAccess: hasProjectAccess,
