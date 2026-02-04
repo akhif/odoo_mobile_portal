@@ -135,13 +135,23 @@ class AppUpdateService {
     Function(DownloadProgress)? onProgress,
   }) async {
     try {
-      final directory = await getExternalStorageDirectory();
+      // Try multiple storage locations
+      Directory? directory;
+
+      // First try external storage (works on most devices)
+      directory = await getExternalStorageDirectory();
+
+      // Fallback to app's cache directory if external storage not available
       if (directory == null) {
-        throw Exception('Could not access storage');
+        directory = await getApplicationDocumentsDirectory();
       }
 
       final filePath = '${directory.path}/odoo_portal_update.apk';
       final file = File(filePath);
+
+      if (kDebugMode) {
+        debugPrint('Downloading APK to: $filePath');
+      }
 
       // Delete existing file if present
       if (await file.exists()) {
@@ -158,7 +168,18 @@ class AppUpdateService {
         },
       );
 
-      return file;
+      // Verify file exists and has content
+      if (await file.exists()) {
+        final fileSize = await file.length();
+        if (kDebugMode) {
+          debugPrint('Downloaded APK size: $fileSize bytes');
+        }
+        if (fileSize > 0) {
+          return file;
+        }
+      }
+
+      return null;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Error downloading update: $e');
@@ -169,8 +190,39 @@ class AppUpdateService {
 
   Future<bool> installUpdate(File apkFile) async {
     try {
-      final result = await OpenFilex.open(apkFile.path);
-      return result.type == ResultType.done;
+      if (kDebugMode) {
+        debugPrint('Opening APK for installation: ${apkFile.path}');
+      }
+
+      // Open with explicit MIME type for APK files
+      final result = await OpenFilex.open(
+        apkFile.path,
+        type: 'application/vnd.android.package-archive',
+      );
+
+      if (kDebugMode) {
+        debugPrint('OpenFilex result: ${result.type} - ${result.message}');
+      }
+
+      // ResultType.done means the file was opened successfully
+      // ResultType.noAppToOpen means no app to handle APK (should not happen)
+      // ResultType.permissionDenied means install permission denied
+      // ResultType.fileNotFound means file not found
+      // ResultType.error means generic error
+
+      if (result.type == ResultType.done) {
+        return true;
+      } else if (result.type == ResultType.permissionDenied) {
+        if (kDebugMode) {
+          debugPrint('Permission denied - user needs to enable "Install unknown apps"');
+        }
+        return false;
+      } else {
+        if (kDebugMode) {
+          debugPrint('Failed to open APK: ${result.message}');
+        }
+        return false;
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Error installing update: $e');

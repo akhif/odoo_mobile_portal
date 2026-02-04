@@ -111,7 +111,9 @@ class UpdateNotifier extends StateNotifier<UpdateState> {
 
       state = state.copyWith(
         isInstalling: false,
-        error: installed ? null : 'Failed to open installer',
+        error: installed
+            ? null
+            : 'Could not open installer. Please enable "Install unknown apps" in Settings for this app, then try again.',
       );
     } catch (e) {
       state = state.copyWith(
