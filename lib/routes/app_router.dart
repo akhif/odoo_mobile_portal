@@ -29,12 +29,13 @@ import '../features/project/presentation/screens/job_order_detail_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
-
   return GoRouter(
     initialLocation: '/',
     debugLogDiagnostics: true,
     redirect: (context, state) {
+      // Read auth state without watching (prevents router recreation)
+      final authState = ref.read(authProvider);
+
       final isLoggedIn = authState.isAuthenticated;
       final needsServerSetup = authState.needsServerSetup;
       final isOnSplash = state.matchedLocation == '/';
@@ -44,19 +45,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Don't redirect from splash (it handles its own navigation)
       if (isOnSplash) return null;
 
+      // Allow navigation between server-setup and login
+      if (isOnLogin || isOnServerSetup) return null;
+
       // If server setup is needed, go there
-      if (needsServerSetup && !isOnServerSetup) {
+      if (needsServerSetup) {
         return '/server-setup';
       }
 
-      // If not logged in and not on auth pages, go to login
-      if (!isLoggedIn && !isOnLogin && !isOnServerSetup) {
+      // If not logged in, go to login
+      if (!isLoggedIn) {
         return '/login';
-      }
-
-      // If logged in and on auth pages, go to dashboard
-      if (isLoggedIn && (isOnLogin || isOnServerSetup)) {
-        return '/dashboard';
       }
 
       return null;
