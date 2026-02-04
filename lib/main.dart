@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import 'app.dart';
+import 'core/network/odoo_rpc_client.dart';
 import 'core/storage/secure_storage_service.dart';
 import 'core/storage/preferences_service.dart';
 
@@ -19,6 +20,7 @@ void main() async {
   // Initialize services
   await SecureStorageService.instance.init();
   await PreferencesService.instance.init();
+  await OdooRpcClient.instance.init();
 
   runApp(
     ProviderScope(
