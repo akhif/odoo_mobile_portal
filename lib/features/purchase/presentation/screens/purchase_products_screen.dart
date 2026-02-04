@@ -150,7 +150,6 @@ class _PurchaseProductCard extends StatelessWidget {
     final currencyFormat = NumberFormat.currency(symbol: '', decimalDigits: 2);
     final costPrice =
         (product['standard_price'] as num?)?.toDouble() ?? 0.0;
-    final salePrice = (product['list_price'] as num?)?.toDouble() ?? 0.0;
     final qtyAvailable =
         (product['qty_available'] as num?)?.toDouble() ?? 0.0;
     final suppliers =
@@ -215,84 +214,30 @@ class _PurchaseProductCard extends StatelessWidget {
 
             SizedBox(height: 16.h),
 
-            // Price Row
-            Row(
+            // Cost Price
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cost Price',
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.6),
-                        ),
-                      ),
-                      Text(
-                        currencyFormat.format(costPrice),
-                        style: TextStyle(
-                          fontSize: 18.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.secondary,
-                        ),
-                      ),
-                    ],
+                Text(
+                  'Cost Price',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
                   ),
                 ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'Sale Price',
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.6),
-                        ),
-                      ),
-                      Text(
-                        currencyFormat.format(salePrice),
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
+                Text(
+                  currencyFormat.format(costPrice),
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.secondary,
                   ),
                 ),
               ],
             ),
-
-            // Margin indicator
-            if (salePrice > 0 && costPrice > 0) ...[
-              SizedBox(height: 8.h),
-              Row(
-                children: [
-                  Icon(
-                    Icons.trending_up,
-                    size: 16.sp,
-                    color: AppColors.success,
-                  ),
-                  SizedBox(width: 4.w),
-                  Text(
-                    'Margin: ${((salePrice - costPrice) / salePrice * 100).toStringAsFixed(1)}%',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ],
 
             // Suppliers
             if (suppliers.isNotEmpty) ...[

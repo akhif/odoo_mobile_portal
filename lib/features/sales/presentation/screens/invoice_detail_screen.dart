@@ -149,6 +149,33 @@ class InvoiceDetailScreen extends ConsumerWidget {
                   ),
                 ),
 
+                // Invoice Lines (Products)
+                if (invoice.lines.isNotEmpty) ...[
+                  SizedBox(height: 24.h),
+                  Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.w),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Products',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 12.h),
+                          ...invoice.lines.map((line) => _InvoiceLineItem(
+                            line: line,
+                            currencyFormat: currencyFormat,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
                 SizedBox(height: 24.h),
 
                 // Invoice State Info
@@ -190,6 +217,64 @@ class InvoiceDetailScreen extends ConsumerWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _InvoiceLineItem extends StatelessWidget {
+  final dynamic line;
+  final NumberFormat currencyFormat;
+
+  const _InvoiceLineItem({required this.line, required this.currencyFormat});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            line.productName ?? line.name,
+            style: TextStyle(
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${line.quantity.toStringAsFixed(2)} x ${currencyFormat.format(line.priceUnit)}',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+              Text(
+                currencyFormat.format(line.priceSubtotal),
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          if (line.discount > 0) ...[
+            SizedBox(height: 2.h),
+            Text(
+              'Discount: ${line.discount.toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontSize: 11.sp,
+                color: AppColors.success,
+              ),
+            ),
+          ],
+          SizedBox(height: 8.h),
+          const Divider(height: 1),
+        ],
       ),
     );
   }

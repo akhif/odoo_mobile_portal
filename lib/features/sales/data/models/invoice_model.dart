@@ -13,6 +13,7 @@ class InvoiceModel {
   final String state;
   final String paymentState;
   final String? currency;
+  final List<InvoiceLineModel> lines;
 
   InvoiceModel({
     required this.id,
@@ -27,6 +28,7 @@ class InvoiceModel {
     required this.state,
     required this.paymentState,
     this.currency,
+    this.lines = const [],
   });
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
@@ -50,6 +52,24 @@ class InvoiceModel {
       currency: json['currency_id'] is List && (json['currency_id'] as List).length > 1
           ? (json['currency_id'] as List)[1] as String
           : null,
+    );
+  }
+
+  InvoiceModel copyWithLines(List<InvoiceLineModel> newLines) {
+    return InvoiceModel(
+      id: id,
+      name: name,
+      partnerId: partnerId,
+      partnerName: partnerName,
+      amountTotal: amountTotal,
+      amountResidual: amountResidual,
+      amountPaid: amountPaid,
+      invoiceDate: invoiceDate,
+      invoiceDateDue: invoiceDateDue,
+      state: state,
+      paymentState: paymentState,
+      currency: currency,
+      lines: newLines,
     );
   }
 
@@ -89,6 +109,45 @@ class InvoiceModel {
   }
 }
 
+class InvoiceLineModel {
+  final int id;
+  final String name;
+  final int? productId;
+  final String? productName;
+  final double quantity;
+  final double priceUnit;
+  final double priceSubtotal;
+  final double discount;
+
+  InvoiceLineModel({
+    required this.id,
+    required this.name,
+    this.productId,
+    this.productName,
+    required this.quantity,
+    required this.priceUnit,
+    required this.priceSubtotal,
+    this.discount = 0,
+  });
+
+  factory InvoiceLineModel.fromJson(Map<String, dynamic> json) {
+    return InvoiceLineModel(
+      id: json['id'] as int,
+      name: json['name'] as String? ?? '',
+      productId: json['product_id'] is List
+          ? (json['product_id'] as List)[0] as int
+          : json['product_id'] as int?,
+      productName: json['product_id'] is List && (json['product_id'] as List).length > 1
+          ? (json['product_id'] as List)[1] as String
+          : null,
+      quantity: (json['quantity'] as num?)?.toDouble() ?? 0.0,
+      priceUnit: (json['price_unit'] as num?)?.toDouble() ?? 0.0,
+      priceSubtotal: (json['price_subtotal'] as num?)?.toDouble() ?? 0.0,
+      discount: (json['discount'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
 class CustomerCreditModel {
   final int partnerId;
   final String partnerName;
@@ -106,5 +165,21 @@ class CustomerCreditModel {
     required this.creditAvailable,
     required this.totalDue,
     required this.totalOverdue,
+  });
+}
+
+class InvoiceDashboard {
+  final double monthlyTotal;
+  final double totalOutstanding;
+  final double totalOverdue;
+  final int overdueCount;
+  final int invoiceCount;
+
+  InvoiceDashboard({
+    required this.monthlyTotal,
+    required this.totalOutstanding,
+    required this.totalOverdue,
+    required this.overdueCount,
+    required this.invoiceCount,
   });
 }

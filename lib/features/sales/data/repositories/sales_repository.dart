@@ -99,7 +99,7 @@ class SalesRepository {
     }
   }
 
-  // Get single invoice details
+  // Get single invoice details with lines
   Future<InvoiceModel?> getInvoice(int id) async {
     final result = await _rpcClient.read(
       model: AppConstants.modelInvoice,
@@ -118,7 +118,111 @@ class SalesRepository {
       ],
     );
 
-    return result.isNotEmpty ? InvoiceModel.fromJson(result[0]) : null;
+    if (result.isEmpty) return null;
+
+    final invoice = InvoiceModel.fromJson(result[0]);
+
+    // Fetch invoice lines
+    final lineIds = result[0]['invoice_line_ids'] as List<dynamic>? ?? [];
+    if (lineIds.isNotEmpty) {
+      try {
+        final lines = await _rpcClient.read(
+          model: 'account.move.line',
+          ids: lineIds.cast<int>(),
+          fields: [
+            'name',
+            'product_id',
+            'quantity',
+            'price_unit',
+            'price_subtotal',
+            'discount',
+          ],
+        );
+        return invoice.copyWithLines(
+          lines.where((l) => l['product_id'] != false).map((l) => InvoiceLineModel.fromJson(l)).toList(),
+        );
+      } catch (_) {
+        // Could not fetch lines
+      }
+    }
+
+    return invoice;
+  }
+
+  // Get invoice dashboard statistics
+  Future<InvoiceDashboard> getInvoiceDashboard() async {
+    final userId = await _userId;
+
+    try {
+      // Get all posted invoices for current month
+      final now = DateTime.now();
+      final firstDayOfMonth = DateTime(now.year, now.month, 1);
+      final firstDayStr = '${firstDayOfMonth.year}-${firstDayOfMonth.month.toString().padLeft(2, '0')}-01';
+
+      final baseDomain = <List<dynamic>>[
+        ['move_type', '=', 'out_invoice'],
+        ['state', '=', 'posted'],
+      ];
+
+      if (userId != null) {
+        baseDomain.add(['invoice_user_id', '=', userId]);
+      }
+
+      // Get this month's invoices
+      final monthDomain = [...baseDomain, ['invoice_date', '>=', firstDayStr]];
+      final monthInvoices = await _rpcClient.searchRead(
+        model: AppConstants.modelInvoice,
+        domain: monthDomain,
+        fields: ['amount_total'],
+      );
+
+      double monthTotal = 0;
+      for (final inv in monthInvoices) {
+        monthTotal += (inv['amount_total'] as num?)?.toDouble() ?? 0;
+      }
+
+      // Get all unpaid invoices
+      final unpaidDomain = [...baseDomain, ['payment_state', 'in', ['not_paid', 'partial']]];
+      final unpaidInvoices = await _rpcClient.searchRead(
+        model: AppConstants.modelInvoice,
+        domain: unpaidDomain,
+        fields: ['amount_residual', 'invoice_date_due'],
+      );
+
+      double totalOutstanding = 0;
+      double totalOverdue = 0;
+      int overdueCount = 0;
+
+      for (final inv in unpaidInvoices) {
+        final residual = (inv['amount_residual'] as num?)?.toDouble() ?? 0;
+        totalOutstanding += residual;
+
+        final dueDateStr = inv['invoice_date_due'];
+        if (dueDateStr != null && dueDateStr != false) {
+          final dueDate = DateTime.tryParse(dueDateStr.toString());
+          if (dueDate != null && dueDate.isBefore(now)) {
+            totalOverdue += residual;
+            overdueCount++;
+          }
+        }
+      }
+
+      return InvoiceDashboard(
+        monthlyTotal: monthTotal,
+        totalOutstanding: totalOutstanding,
+        totalOverdue: totalOverdue,
+        overdueCount: overdueCount,
+        invoiceCount: monthInvoices.length,
+      );
+    } catch (e) {
+      return InvoiceDashboard(
+        monthlyTotal: 0,
+        totalOutstanding: 0,
+        totalOverdue: 0,
+        overdueCount: 0,
+        invoiceCount: 0,
+      );
+    }
   }
 
   // Get customer credit info

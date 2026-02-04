@@ -40,6 +40,8 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   @override
   Widget build(BuildContext context) {
     final invoicesAsync = ref.watch(invoicesProvider);
+    final dashboardAsync = ref.watch(invoiceDashboardProvider);
+    final currentFilter = ref.watch(invoiceFilterProvider);
     final currencyFormat = NumberFormat.currency(symbol: '', decimalDigits: 2);
     final dateFormat = DateFormat('dd MMM yyyy');
 
@@ -49,9 +51,72 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       ),
       body: Column(
         children: [
+          // Mini Dashboard
+          dashboardAsync.when(
+            loading: () => Padding(
+              padding: EdgeInsets.all(16.w),
+              child: const LinearProgressIndicator(),
+            ),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (dashboard) => _InvoiceDashboard(
+              dashboard: dashboard,
+              currencyFormat: currencyFormat,
+            ),
+          ),
+
+          // Filter Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            child: Row(
+              children: [
+                _FilterChip(
+                  label: 'All',
+                  isSelected: currentFilter == null,
+                  onTap: () {
+                    ref.read(invoiceFilterProvider.notifier).state = null;
+                    ref.invalidate(invoicesProvider);
+                  },
+                ),
+                SizedBox(width: 8.w),
+                _FilterChip(
+                  label: 'Paid',
+                  isSelected: currentFilter == 'paid',
+                  color: AppColors.success,
+                  onTap: () {
+                    ref.read(invoiceFilterProvider.notifier).state = 'paid';
+                    ref.invalidate(invoicesProvider);
+                  },
+                ),
+                SizedBox(width: 8.w),
+                _FilterChip(
+                  label: 'Open',
+                  isSelected: currentFilter == 'not_paid',
+                  color: AppColors.info,
+                  onTap: () {
+                    ref.read(invoiceFilterProvider.notifier).state = 'not_paid';
+                    ref.invalidate(invoicesProvider);
+                  },
+                ),
+                SizedBox(width: 8.w),
+                _FilterChip(
+                  label: 'Partial',
+                  isSelected: currentFilter == 'partial',
+                  color: AppColors.warning,
+                  onTap: () {
+                    ref.read(invoiceFilterProvider.notifier).state = 'partial';
+                    ref.invalidate(invoicesProvider);
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          SizedBox(height: 8.h),
+
           // Search Bar
           Padding(
-            padding: EdgeInsets.all(16.w),
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -77,6 +142,8 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
             ),
           ),
 
+          SizedBox(height: 8.h),
+
           // Invoice List
           Expanded(
             child: invoicesAsync.when(
@@ -95,14 +162,17 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                         : 'No Invoices',
                     subtitle: _searchQuery.isNotEmpty
                         ? 'No invoices found for "$_searchQuery"'
-                        : 'Customer invoices will appear here',
+                        : currentFilter != null
+                            ? 'No invoices with this filter'
+                            : 'Customer invoices will appear here',
                     icon: Icons.receipt_outlined,
                   );
                 }
 
                 return RefreshIndicator(
                   onRefresh: () async {
-                    ref.refresh(invoicesProvider);
+                    ref.invalidate(invoicesProvider);
+                    ref.invalidate(invoiceDashboardProvider);
                   },
                   child: ListView.separated(
                     padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -235,6 +305,171 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InvoiceDashboard extends StatelessWidget {
+  final InvoiceDashboard dashboard;
+  final NumberFormat currencyFormat;
+
+  const _InvoiceDashboard({
+    required this.dashboard,
+    required this.currencyFormat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.all(16.w),
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _DashboardItem(
+                  label: 'This Month',
+                  value: currencyFormat.format(dashboard.monthlyTotal),
+                  icon: Icons.calendar_month,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 40.h,
+                color: Colors.white24,
+              ),
+              Expanded(
+                child: _DashboardItem(
+                  label: 'Outstanding',
+                  value: currencyFormat.format(dashboard.totalOutstanding),
+                  icon: Icons.account_balance_wallet,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Container(
+            height: 1,
+            color: Colors.white24,
+          ),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              Expanded(
+                child: _DashboardItem(
+                  label: 'Overdue',
+                  value: currencyFormat.format(dashboard.totalOverdue),
+                  icon: Icons.warning_amber,
+                  valueColor: dashboard.totalOverdue > 0 ? Colors.red[200] : null,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 40.h,
+                color: Colors.white24,
+              ),
+              Expanded(
+                child: _DashboardItem(
+                  label: 'Overdue Count',
+                  value: dashboard.overdueCount.toString(),
+                  icon: Icons.receipt_long,
+                  valueColor: dashboard.overdueCount > 0 ? Colors.red[200] : null,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color? valueColor;
+
+  const _DashboardItem({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white70, size: 20.sp),
+        SizedBox(height: 4.h),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.sp,
+            color: Colors.white70,
+          ),
+        ),
+        SizedBox(height: 2.h),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.bold,
+            color: valueColor ?? Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final Color? color;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.isSelected,
+    this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chipColor = color ?? AppColors.primary;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+        decoration: BoxDecoration(
+          color: isSelected ? chipColor : chipColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20.r),
+          border: Border.all(
+            color: chipColor,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13.sp,
+            fontWeight: FontWeight.w500,
+            color: isSelected ? Colors.white : chipColor,
+          ),
+        ),
       ),
     );
   }

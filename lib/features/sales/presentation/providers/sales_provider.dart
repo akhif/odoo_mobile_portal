@@ -8,10 +8,20 @@ final salesRepositoryProvider = Provider<SalesRepository>((ref) {
   return SalesRepository();
 });
 
-// Invoices provider
+// Invoice filter state provider
+final invoiceFilterProvider = StateProvider<String?>((ref) => null);
+
+// Invoices provider (with filter support)
 final invoicesProvider = FutureProvider.autoDispose<List<InvoiceModel>>((ref) async {
   final repository = ref.watch(salesRepositoryProvider);
-  return await repository.getInvoices();
+  final filter = ref.watch(invoiceFilterProvider);
+  return await repository.getInvoices(paymentState: filter);
+});
+
+// Invoice dashboard provider
+final invoiceDashboardProvider = FutureProvider.autoDispose<InvoiceDashboard>((ref) async {
+  final repository = ref.watch(salesRepositoryProvider);
+  return await repository.getInvoiceDashboard();
 });
 
 // Invoice detail provider
