@@ -201,7 +201,22 @@ class HrRepository {
     final employeeId = await _employeeId;
     final userId = await _userId;
 
-    // Try with employee_id first
+    // Minimal fields that exist in Odoo 17 hr.leave
+    // Note: 'notes' field was renamed to 'private_name' in newer Odoo versions
+    final fields = [
+      'name',
+      'display_name',
+      'holiday_status_id',
+      'date_from',
+      'date_to',
+      'number_of_days',
+      'state',
+      'private_name',
+      'employee_id',
+      'create_date',
+    ];
+
+    // Strategy 1: Try with employee_id filter
     if (employeeId != null) {
       try {
         final result = await _rpcClient.searchRead(
@@ -209,95 +224,91 @@ class HrRepository {
           domain: [
             ['employee_id', '=', employeeId],
           ],
-          fields: [
-            'name',
-            'display_name',
-            'holiday_status_id',
-            'date_from',
-            'date_to',
-            'number_of_days',
-            'state',
-            'notes',
-            'employee_id',
-            'create_date',
-            'attachment_ids',
-          ],
+          fields: fields,
           limit: limit,
           offset: offset,
           order: 'create_date desc',
         );
 
         if (result.isNotEmpty) {
-          return result.map((json) => LeaveRequestModel.fromJson(json)).toList();
+          return result.map((json) => _parseLeaveRequest(json)).toList();
         }
       } catch (_) {
         // Try fallback
       }
     }
 
-    // Fallback: try to query by user_id
+    // Strategy 2: Find employee by user_id and query leaves
     if (userId != null) {
       try {
-        final result = await _rpcClient.searchRead(
-          model: AppConstants.modelLeave,
+        final employees = await _rpcClient.searchRead(
+          model: 'hr.employee',
           domain: [
             ['user_id', '=', userId],
           ],
-          fields: [
-            'name',
-            'display_name',
-            'holiday_status_id',
-            'date_from',
-            'date_to',
-            'number_of_days',
-            'state',
-            'notes',
-            'employee_id',
-            'create_date',
-            'attachment_ids',
-          ],
-          limit: limit,
-          offset: offset,
-          order: 'create_date desc',
+          fields: ['id'],
+          limit: 1,
         );
 
-        return result.map((json) => LeaveRequestModel.fromJson(json)).toList();
+        if (employees.isNotEmpty) {
+          final empId = employees[0]['id'] as int;
+          // Cache it for future use
+          await _storage.updateEmployeeInfo(
+            employeeId: empId.toString(),
+            employeeName: '',
+          );
+
+          final result = await _rpcClient.searchRead(
+            model: AppConstants.modelLeave,
+            domain: [
+              ['employee_id', '=', empId],
+            ],
+            fields: fields,
+            limit: limit,
+            offset: offset,
+            order: 'create_date desc',
+          );
+
+          if (result.isNotEmpty) {
+            return result.map((json) => _parseLeaveRequest(json)).toList();
+          }
+        }
       } catch (_) {
-        // user_id field might not exist
+        // Employee lookup failed
       }
     }
 
-    // Final fallback: try without filter (will return all user's leaves if access rights permit)
-    if (userId != null) {
-      try {
-        final result = await _rpcClient.searchRead(
-          model: AppConstants.modelLeave,
-          domain: [],
-          fields: [
-            'name',
-            'display_name',
-            'holiday_status_id',
-            'date_from',
-            'date_to',
-            'number_of_days',
-            'state',
-            'notes',
-            'employee_id',
-            'create_date',
-            'attachment_ids',
-          ],
-          limit: limit,
-          offset: offset,
-          order: 'create_date desc',
-        );
+    // Strategy 3: Query without filter (Odoo record rules will apply)
+    try {
+      final result = await _rpcClient.searchRead(
+        model: AppConstants.modelLeave,
+        domain: [],
+        fields: fields,
+        limit: limit,
+        offset: offset,
+        order: 'create_date desc',
+      );
 
-        return result.map((json) => LeaveRequestModel.fromJson(json)).toList();
-      } catch (_) {
-        // No access
-      }
+      return result.map((json) => _parseLeaveRequest(json)).toList();
+    } catch (_) {
+      // No access
     }
 
     return [];
+  }
+
+  LeaveRequestModel _parseLeaveRequest(Map<String, dynamic> json) {
+    // Handle notes field which is 'private_name' in Odoo 17
+    String? notes = json['private_name'] as String?;
+    if ((notes == null || notes.isEmpty) && json['notes'] != null) {
+      notes = json['notes'] as String?;
+    }
+
+    return LeaveRequestModel.fromJson({
+      ...json,
+      'notes': notes,
+      'attachment_ids': json['attachment_ids'] ?? [],
+    });
   }
 
   Future<int> createLeaveRequest({
@@ -393,14 +404,17 @@ class HrRepository {
     }
 
     final now = DateTime.now();
+    final timestamp = AppDateUtils.toOdooDateTime(now);
+    int attendanceId;
+    String attendanceModel;
 
     // First, try using custom hr.remote.attendance model
     try {
-      return await _rpcClient.create(
+      attendanceId = await _rpcClient.create(
         model: AppConstants.modelRemoteAttendance,
         values: {
           'employee_id': employeeId,
-          isCheckOut ? 'check_out' : 'check_in': AppDateUtils.toOdooDateTime(now),
+          isCheckOut ? 'check_out' : 'check_in': timestamp,
           'latitude': latitude,
           'longitude': longitude,
           'gps_accuracy': accuracy,
@@ -409,36 +423,58 @@ class HrRepository {
           'state': 'draft',
         },
       );
+      attendanceModel = AppConstants.modelRemoteAttendance;
     } catch (_) {
       // Fallback to standard hr.attendance model
-    }
-
-    // Fallback: Use standard hr.attendance model
-    if (isCheckOut) {
-      // For check-out, find the open attendance and update it
-      final currentAttendance = await getCurrentAttendance();
-      if (currentAttendance != null) {
-        await _rpcClient.write(
+      if (isCheckOut) {
+        // For check-out, find the open attendance and update it
+        final currentAttendance = await getCurrentAttendance();
+        if (currentAttendance != null) {
+          await _rpcClient.write(
+            model: AppConstants.modelAttendance,
+            ids: [currentAttendance.id],
+            values: {
+              'check_out': timestamp,
+            },
+          );
+          attendanceId = currentAttendance.id;
+        } else {
+          throw Exception('No open attendance record found to check out');
+        }
+      } else {
+        // For check-in, create a new attendance record
+        attendanceId = await _rpcClient.create(
           model: AppConstants.modelAttendance,
-          ids: [currentAttendance.id],
           values: {
-            'check_out': AppDateUtils.toOdooDateTime(now),
+            'employee_id': employeeId,
+            'check_in': timestamp,
           },
         );
-        return currentAttendance.id;
-      } else {
-        throw Exception('No open attendance record found to check out');
       }
-    } else {
-      // For check-in, create a new attendance record
-      return await _rpcClient.create(
-        model: AppConstants.modelAttendance,
-        values: {
-          'employee_id': employeeId,
-          'check_in': AppDateUtils.toOdooDateTime(now),
-        },
-      );
+      attendanceModel = AppConstants.modelAttendance;
     }
+
+    // Upload photo as attachment
+    try {
+      final photoFilename = isCheckOut
+          ? 'checkout_${now.millisecondsSinceEpoch}.jpg'
+          : 'checkin_${now.millisecondsSinceEpoch}.jpg';
+
+      await _rpcClient.uploadAttachment(
+        model: attendanceModel,
+        resId: attendanceId,
+        filename: photoFilename,
+        data: photo,
+        description: isCheckOut
+            ? 'Check-out photo - Lat: $latitude, Lng: $longitude, Accuracy: ${accuracy.toStringAsFixed(0)}m'
+            : 'Check-in photo - Lat: $latitude, Lng: $longitude, Accuracy: ${accuracy.toStringAsFixed(0)}m',
+      );
+    } catch (_) {
+      // Photo upload failed, but attendance was recorded
+      // Don't throw - the attendance record is more important
+    }
+
+    return attendanceId;
   }
 
   // ==================== HR DOCUMENTS ====================
