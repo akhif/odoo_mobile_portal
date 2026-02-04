@@ -47,6 +47,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   Future<void> _checkAuthStatus() async {
     try {
+      debugPrint('Splash: Starting auth check...');
+
       // Wait for animation and auth check
       await Future.wait([
         Future.delayed(const Duration(milliseconds: 2000)),
@@ -56,26 +58,35 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       if (!mounted) return;
 
       final authState = ref.read(authProvider);
+      debugPrint('Splash: Auth status = ${authState.status}');
+      debugPrint('Splash: User = ${authState.user?.username}');
+      debugPrint('Splash: Server config = ${authState.serverConfig?.serverUrl}');
 
       switch (authState.status) {
         case AuthStatus.authenticated:
+          debugPrint('Splash: Navigating to dashboard');
           context.go('/dashboard');
           break;
         case AuthStatus.unauthenticated:
+          debugPrint('Splash: Navigating to login');
           context.go('/login');
           break;
         case AuthStatus.serverSetupRequired:
+          debugPrint('Splash: Navigating to server-setup (serverSetupRequired)');
           context.go('/server-setup');
           break;
         case AuthStatus.error:
+          debugPrint('Splash: Navigating to server-setup (error: ${authState.errorMessage})');
           context.go('/server-setup');
           break;
         default:
+          debugPrint('Splash: Navigating to server-setup (default)');
           context.go('/server-setup');
       }
-    } catch (e) {
+    } catch (e, stack) {
       // If any error occurs during auth check, navigate to server setup
       debugPrint('Splash auth check error: $e');
+      debugPrint('Stack trace: $stack');
       if (mounted) {
         context.go('/server-setup');
       }

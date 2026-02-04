@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/session_model.dart';
@@ -63,19 +64,40 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.loading);
 
     try {
+      if (kDebugMode) {
+        debugPrint('AuthProvider: Starting checkAuthStatus...');
+      }
+
       // Check if server is configured
       final hasConfig = await _repository.hasServerConfig();
+      if (kDebugMode) {
+        debugPrint('AuthProvider: hasServerConfig = $hasConfig');
+      }
+
       if (!hasConfig) {
+        if (kDebugMode) {
+          debugPrint('AuthProvider: No server config, going to server setup');
+        }
         state = state.copyWith(status: AuthStatus.serverSetupRequired);
         return;
       }
 
       // Get stored server config
       final serverConfig = await _repository.getStoredServerConfig();
+      if (kDebugMode) {
+        debugPrint('AuthProvider: serverConfig = ${serverConfig?.serverUrl}');
+      }
 
       // Check if logged in (has stored session)
       final isLoggedIn = await _repository.isLoggedIn();
+      if (kDebugMode) {
+        debugPrint('AuthProvider: isLoggedIn = $isLoggedIn');
+      }
+
       if (!isLoggedIn) {
+        if (kDebugMode) {
+          debugPrint('AuthProvider: No stored session, going to login (server config exists)');
+        }
         state = state.copyWith(
           status: AuthStatus.unauthenticated,
           serverConfig: serverConfig,
@@ -86,35 +108,63 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Try to restore session by re-authenticating with stored credentials
       // This ensures we have a valid session with the server
       try {
+        if (kDebugMode) {
+          debugPrint('AuthProvider: Attempting to restore session...');
+        }
         final user = await _repository.restoreSession();
         if (user != null) {
+          if (kDebugMode) {
+            debugPrint('AuthProvider: Session restored successfully for user: ${user.username}');
+          }
           state = state.copyWith(
             status: AuthStatus.authenticated,
             user: user,
             serverConfig: serverConfig,
           );
           return;
+        } else {
+          if (kDebugMode) {
+            debugPrint('AuthProvider: restoreSession returned null, trying cached user...');
+          }
         }
       } catch (e) {
-        // Re-auth failed, try using cached data with restored credentials
-        final user = await _repository.getCurrentUser();
-        if (user != null) {
-          await _repository.restoreCredentialsFromStorage();
-          state = state.copyWith(
-            status: AuthStatus.authenticated,
-            user: user,
-            serverConfig: serverConfig,
-          );
-          return;
+        if (kDebugMode) {
+          debugPrint('AuthProvider: restoreSession failed with error: $e');
         }
       }
 
+      // Re-auth failed or returned null, try using cached data with restored credentials
+      final user = await _repository.getCurrentUser();
+      if (kDebugMode) {
+        debugPrint('AuthProvider: getCurrentUser = ${user?.username}');
+      }
+
+      if (user != null) {
+        await _repository.restoreCredentialsFromStorage();
+        if (kDebugMode) {
+          debugPrint('AuthProvider: Using cached user data, marking as authenticated');
+        }
+        state = state.copyWith(
+          status: AuthStatus.authenticated,
+          user: user,
+          serverConfig: serverConfig,
+        );
+        return;
+      }
+
       // No valid session
+      if (kDebugMode) {
+        debugPrint('AuthProvider: No valid session found, going to unauthenticated');
+      }
       state = state.copyWith(
         status: AuthStatus.unauthenticated,
         serverConfig: serverConfig,
       );
     } catch (e) {
+      if (kDebugMode) {
+        debugPrint('AuthProvider: Error in checkAuthStatus: $e');
+      }
+
       // On error, still try to use cached data
       try {
         final serverConfig = await _repository.getStoredServerConfig();
@@ -124,6 +174,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
           state = state.copyWith(
             status: AuthStatus.authenticated,
             user: user,
+            serverConfig: serverConfig,
+          );
+          return;
+        }
+
+        // If we have server config but no user, go to login not server setup
+        if (serverConfig != null) {
+          state = state.copyWith(
+            status: AuthStatus.unauthenticated,
             serverConfig: serverConfig,
           );
           return;
