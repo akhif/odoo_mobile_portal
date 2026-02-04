@@ -25,12 +25,26 @@ class LeaveRequestScreen extends ConsumerWidget {
         icon: const Icon(Icons.add),
         label: const Text('New Request'),
       ),
-      body: leaveRequestsAsync.when(
-        loading: () => const ListShimmer(),
-        error: (error, stack) => AppErrorWidget(
-          message: 'Failed to load leave requests',
-          onRetry: () => ref.refresh(leaveRequestsProvider),
-        ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(leaveRequestsProvider);
+        },
+        child: leaveRequestsAsync.when(
+          loading: () => const ListShimmer(),
+          error: (error, stack) {
+            final errorStr = error.toString().toLowerCase();
+            if (errorStr.contains('access') || errorStr.contains('not allowed')) {
+              return EmptyStateWidget(
+                title: 'Access Restricted',
+                subtitle: 'Leave requests are not available. Please contact your administrator.',
+                icon: Icons.lock_outlined,
+              );
+            }
+            return AppErrorWidget(
+              message: 'Failed to load leave requests',
+              onRetry: () => ref.refresh(leaveRequestsProvider),
+            );
+          },
         data: (requests) {
           if (requests.isEmpty) {
             return EmptyStateWidget(
@@ -45,11 +59,7 @@ class LeaveRequestScreen extends ConsumerWidget {
             );
           }
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.refresh(leaveRequestsProvider);
-            },
-            child: ListView.separated(
+          return ListView.separated(
               padding: EdgeInsets.all(16.w),
               itemCount: requests.length,
               separatorBuilder: (_, __) => SizedBox(height: 12.h),
@@ -131,9 +141,9 @@ class LeaveRequestScreen extends ConsumerWidget {
                   ),
                 );
               },
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

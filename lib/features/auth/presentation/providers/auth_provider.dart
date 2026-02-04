@@ -83,23 +83,37 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
 
-      // Get cached user data without re-authenticating
-      // This allows offline app startup and faster loading
-      final user = await _repository.getCurrentUser();
-      if (user != null) {
-        // Restore credentials to RPC client from storage
-        await _repository.restoreCredentialsFromStorage();
-        state = state.copyWith(
-          status: AuthStatus.authenticated,
-          user: user,
-          serverConfig: serverConfig,
-        );
-      } else {
-        state = state.copyWith(
-          status: AuthStatus.unauthenticated,
-          serverConfig: serverConfig,
-        );
+      // Try to restore session by re-authenticating with stored credentials
+      // This ensures we have a valid session with the server
+      try {
+        final user = await _repository.restoreSession();
+        if (user != null) {
+          state = state.copyWith(
+            status: AuthStatus.authenticated,
+            user: user,
+            serverConfig: serverConfig,
+          );
+          return;
+        }
+      } catch (e) {
+        // Re-auth failed, try using cached data with restored credentials
+        final user = await _repository.getCurrentUser();
+        if (user != null) {
+          await _repository.restoreCredentialsFromStorage();
+          state = state.copyWith(
+            status: AuthStatus.authenticated,
+            user: user,
+            serverConfig: serverConfig,
+          );
+          return;
+        }
       }
+
+      // No valid session
+      state = state.copyWith(
+        status: AuthStatus.unauthenticated,
+        serverConfig: serverConfig,
+      );
     } catch (e) {
       // On error, still try to use cached data
       try {

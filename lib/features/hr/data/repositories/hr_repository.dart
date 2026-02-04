@@ -21,11 +21,46 @@ class HrRepository {
 
   Future<int?> get _employeeId async {
     final id = await _storage.getEmployeeId();
-    return id != null ? int.tryParse(id) : null;
+    if (id != null) {
+      final parsed = int.tryParse(id);
+      if (parsed != null) return parsed;
+    }
+    // Try to find employee by user_id
+    return await _findEmployeeByUserId();
   }
 
   Future<int?> get _userId async {
     return await _storage.getUserId();
+  }
+
+  // Helper to find employee record by user_id
+  Future<int?> _findEmployeeByUserId() async {
+    final userId = await _userId;
+    if (userId == null) return null;
+
+    try {
+      final result = await _rpcClient.searchRead(
+        model: 'hr.employee',
+        domain: [
+          ['user_id', '=', userId],
+        ],
+        fields: ['id', 'name'],
+        limit: 1,
+      );
+
+      if (result.isNotEmpty) {
+        final empId = result[0]['id'] as int;
+        // Cache the employee ID for future use
+        await _storage.updateEmployeeInfo(
+          employeeId: empId.toString(),
+          employeeName: result[0]['name']?.toString() ?? '',
+        );
+        return empId;
+      }
+    } catch (_) {
+      // Employee lookup failed
+    }
+    return null;
   }
 
   // ==================== PAYSLIPS ====================
@@ -305,14 +340,16 @@ class HrRepository {
     int offset = 0,
   }) async {
     final employeeId = await _employeeId;
-    if (employeeId == null) return [];
+    if (employeeId == null) {
+      throw Exception('Employee ID not found. Please contact your administrator to link your user account to an employee record.');
+    }
 
     final result = await _rpcClient.searchRead(
       model: AppConstants.modelAttendance,
       domain: [
         ['employee_id', '=', employeeId]
       ],
-      fields: ['employee_id', 'check_in', 'check_out', 'worked_hours'],
+      fields: ['id', 'employee_id', 'check_in', 'check_out', 'worked_hours'],
       limit: limit,
       offset: offset,
       order: 'check_in desc',
@@ -323,7 +360,9 @@ class HrRepository {
 
   Future<AttendanceModel?> getCurrentAttendance() async {
     final employeeId = await _employeeId;
-    if (employeeId == null) return null;
+    if (employeeId == null) {
+      throw Exception('Employee ID not found');
+    }
 
     final result = await _rpcClient.searchRead(
       model: AppConstants.modelAttendance,
@@ -331,7 +370,7 @@ class HrRepository {
         ['employee_id', '=', employeeId],
         ['check_out', '=', false],
       ],
-      fields: ['employee_id', 'check_in', 'check_out', 'worked_hours'],
+      fields: ['id', 'employee_id', 'check_in', 'check_out', 'worked_hours'],
       limit: 1,
       order: 'check_in desc',
     );
@@ -349,23 +388,57 @@ class HrRepository {
     bool isCheckOut = false,
   }) async {
     final employeeId = await _employeeId;
-    if (employeeId == null) throw Exception('Employee ID not found');
+    if (employeeId == null) {
+      throw Exception('Employee ID not found. Please contact your administrator to link your user account to an employee record.');
+    }
 
     final now = DateTime.now();
 
-    return await _rpcClient.create(
-      model: AppConstants.modelRemoteAttendance,
-      values: {
-        'employee_id': employeeId,
-        isCheckOut ? 'check_out' : 'check_in': AppDateUtils.toOdooDateTime(now),
-        'latitude': latitude,
-        'longitude': longitude,
-        'gps_accuracy': accuracy,
-        'device_info': deviceInfo,
-        'is_mock_location': isMockLocation,
-        'state': 'draft',
-      },
-    );
+    // First, try using custom hr.remote.attendance model
+    try {
+      return await _rpcClient.create(
+        model: AppConstants.modelRemoteAttendance,
+        values: {
+          'employee_id': employeeId,
+          isCheckOut ? 'check_out' : 'check_in': AppDateUtils.toOdooDateTime(now),
+          'latitude': latitude,
+          'longitude': longitude,
+          'gps_accuracy': accuracy,
+          'device_info': deviceInfo,
+          'is_mock_location': isMockLocation,
+          'state': 'draft',
+        },
+      );
+    } catch (_) {
+      // Fallback to standard hr.attendance model
+    }
+
+    // Fallback: Use standard hr.attendance model
+    if (isCheckOut) {
+      // For check-out, find the open attendance and update it
+      final currentAttendance = await getCurrentAttendance();
+      if (currentAttendance != null) {
+        await _rpcClient.write(
+          model: AppConstants.modelAttendance,
+          ids: [currentAttendance.id],
+          values: {
+            'check_out': AppDateUtils.toOdooDateTime(now),
+          },
+        );
+        return currentAttendance.id;
+      } else {
+        throw Exception('No open attendance record found to check out');
+      }
+    } else {
+      // For check-in, create a new attendance record
+      return await _rpcClient.create(
+        model: AppConstants.modelAttendance,
+        values: {
+          'employee_id': employeeId,
+          'check_in': AppDateUtils.toOdooDateTime(now),
+        },
+      );
+    }
   }
 
   // ==================== HR DOCUMENTS ====================

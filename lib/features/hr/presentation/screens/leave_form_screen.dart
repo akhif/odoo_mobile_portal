@@ -36,20 +36,37 @@ class _LeaveFormScreenState extends ConsumerState<LeaveFormScreen> {
   }
 
   Future<void> _selectDate(BuildContext context, bool isFrom) async {
-    final initialDate = isFrom ? _dateFrom : _dateTo;
-    final firstDate = isFrom ? DateTime.now() : (_dateFrom ?? DateTime.now());
+    final now = DateTime.now();
+    DateTime firstDate;
+    DateTime initialDate;
+
+    if (isFrom) {
+      // For "from date", allow selecting from today onwards
+      firstDate = now;
+      initialDate = _dateFrom ?? now;
+    } else {
+      // For "to date", allow selecting from the start date (or today if not set)
+      firstDate = _dateFrom ?? now;
+      // Make sure initialDate is not before firstDate
+      if (_dateTo != null && !_dateTo!.isBefore(firstDate)) {
+        initialDate = _dateTo!;
+      } else {
+        initialDate = firstDate;
+      }
+    }
 
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: initialDate ?? DateTime.now(),
+      initialDate: initialDate,
       firstDate: firstDate,
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 365)),
     );
 
     if (pickedDate != null) {
       setState(() {
         if (isFrom) {
           _dateFrom = pickedDate;
+          // Reset end date if it's now before start date
           if (_dateTo != null && _dateTo!.isBefore(_dateFrom!)) {
             _dateTo = _dateFrom;
           }
@@ -139,8 +156,40 @@ class _LeaveFormScreenState extends ConsumerState<LeaveFormScreen> {
             SizedBox(height: 8.h),
             leaveTypesAsync.when(
               loading: () => const LinearProgressIndicator(),
-              error: (_, __) => const Text('Failed to load leave types'),
+              error: (error, _) {
+                final errorStr = error.toString().toLowerCase();
+                if (errorStr.contains('access') || errorStr.contains('not allowed')) {
+                  return Container(
+                    padding: EdgeInsets.all(12.w),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      'Leave types are not accessible. Please contact your administrator.',
+                      style: TextStyle(color: AppColors.warning, fontSize: 14.sp),
+                    ),
+                  );
+                }
+                return Text(
+                  'Failed to load leave types',
+                  style: TextStyle(color: AppColors.error, fontSize: 14.sp),
+                );
+              },
               data: (types) {
+                if (types.isEmpty) {
+                  return Container(
+                    padding: EdgeInsets.all(12.w),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      'No leave types available. Please contact your administrator.',
+                      style: TextStyle(color: AppColors.warning, fontSize: 14.sp),
+                    ),
+                  );
+                }
                 return DropdownButtonFormField<int>(
                   value: _selectedLeaveTypeId,
                   decoration: const InputDecoration(

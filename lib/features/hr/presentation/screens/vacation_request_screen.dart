@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/error_widget.dart';
 import '../../../../core/widgets/loading_shimmer.dart';
 import '../providers/hr_provider.dart';
@@ -24,31 +25,41 @@ class VacationRequestScreen extends ConsumerWidget {
         icon: const Icon(Icons.add),
         label: const Text('New Vacation'),
       ),
-      body: vacationRequestsAsync.when(
-        loading: () => const ListShimmer(),
-        error: (error, stack) => AppErrorWidget(
-          message: 'Failed to load vacation requests',
-          onRetry: () => ref.refresh(vacationRequestsProvider),
-        ),
-        data: (requests) {
-          if (requests.isEmpty) {
-            return EmptyStateWidget(
-              title: 'No Vacation Requests',
-              subtitle: 'Tap the button below to request vacation',
-              icon: Icons.beach_access_outlined,
-              action: ElevatedButton.icon(
-                onPressed: () => context.push('/hr/vacation/new'),
-                icon: const Icon(Icons.add),
-                label: const Text('New Vacation'),
-              ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(vacationRequestsProvider);
+        },
+        child: vacationRequestsAsync.when(
+          loading: () => const ListShimmer(),
+          error: (error, stack) {
+            final errorStr = error.toString().toLowerCase();
+            if (errorStr.contains('access') || errorStr.contains('not allowed')) {
+              return EmptyStateWidget(
+                title: 'Access Restricted',
+                subtitle: 'Vacation requests are not available. Please contact your administrator.',
+                icon: Icons.lock_outlined,
+              );
+            }
+            return AppErrorWidget(
+              message: 'Failed to load vacation requests',
+              onRetry: () => ref.refresh(vacationRequestsProvider),
             );
-          }
+          },
+          data: (requests) {
+            if (requests.isEmpty) {
+              return EmptyStateWidget(
+                title: 'No Vacation Requests',
+                subtitle: 'Tap the button below to request vacation',
+                icon: Icons.beach_access_outlined,
+                action: ElevatedButton.icon(
+                  onPressed: () => context.push('/hr/vacation/new'),
+                  icon: const Icon(Icons.add),
+                  label: const Text('New Vacation'),
+                ),
+              );
+            }
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.refresh(vacationRequestsProvider);
-            },
-            child: ListView.separated(
+            return ListView.separated(
               padding: EdgeInsets.all(16.w),
               itemCount: requests.length,
               separatorBuilder: (_, __) => SizedBox(height: 12.h),
@@ -117,9 +128,9 @@ class VacationRequestScreen extends ConsumerWidget {
                   ),
                 );
               },
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

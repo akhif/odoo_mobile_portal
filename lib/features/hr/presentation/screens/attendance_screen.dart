@@ -378,13 +378,47 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     // Action Buttons
                     currentAttendanceAsync.when(
                       loading: () => const CircularProgressIndicator(),
-                      error: (_, __) => AppButton(
-                        text: 'Check In',
-                        icon: Icons.login,
-                        isLoading: _isCapturing || attendanceState.isLoading,
-                        isFullWidth: true,
-                        onPressed: _locationError == null ? () => _captureAndSubmit(false) : null,
-                      ),
+                      error: (error, _) {
+                        final errorStr = error.toString().toLowerCase();
+                        // Check if employee ID error
+                        if (errorStr.contains('employee') && errorStr.contains('not found')) {
+                          return Container(
+                            padding: EdgeInsets.all(12.w),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8.r),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(Icons.warning_outlined, color: AppColors.warning, size: 32.sp),
+                                SizedBox(height: 8.h),
+                                Text(
+                                  'Employee Record Required',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14.sp,
+                                    color: AppColors.warning,
+                                  ),
+                                ),
+                                SizedBox(height: 4.h),
+                                Text(
+                                  'Please contact your administrator to link your user account to an employee record.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12.sp),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        // Default: show check-in button with error state
+                        return AppButton(
+                          text: 'Check In',
+                          icon: Icons.login,
+                          isLoading: _isCapturing || attendanceState.isLoading,
+                          isFullWidth: true,
+                          onPressed: _locationError == null ? () => _captureAndSubmit(false) : null,
+                        );
+                      },
                       data: (current) {
                         if (current != null && !current.isCheckedOut) {
                           return AppButton(
@@ -424,16 +458,34 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
             attendanceHistoryAsync.when(
               loading: () => const ListShimmer(itemCount: 3),
-              error: (error, _) => AppErrorWidget(
-                message: 'Failed to load history',
-                onRetry: () => ref.refresh(attendanceHistoryProvider),
-              ),
+              error: (error, _) {
+                final errorStr = error.toString().toLowerCase();
+                // Check if employee ID error
+                if (errorStr.contains('employee') && errorStr.contains('not found')) {
+                  return Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.w),
+                      child: Text(
+                        'Attendance history will be available once your account is linked to an employee record.',
+                        style: TextStyle(fontSize: 14.sp),
+                      ),
+                    ),
+                  );
+                }
+                return AppErrorWidget(
+                  message: 'Failed to load history',
+                  onRetry: () => ref.refresh(attendanceHistoryProvider),
+                );
+              },
               data: (history) {
                 if (history.isEmpty) {
-                  return const Card(
+                  return Card(
                     child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Text('No attendance records'),
+                      padding: EdgeInsets.all(16.w),
+                      child: Text(
+                        'No attendance records yet',
+                        style: TextStyle(fontSize: 14.sp),
+                      ),
                     ),
                   );
                 }

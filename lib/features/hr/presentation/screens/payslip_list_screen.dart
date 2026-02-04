@@ -79,11 +79,24 @@ class _PayslipListScreenState extends ConsumerState<PayslipListScreen> {
           Expanded(
             child: payslipsAsync.when(
               loading: () => const ListShimmer(),
-              error: (error, stack) => AppErrorWidget(
-                message: 'Failed to load payslips',
-                details: error.toString(),
-                onRetry: () => ref.refresh(payslipsProvider),
-              ),
+              error: (error, stack) {
+                final errorStr = error.toString().toLowerCase();
+                // Check if this is an access rights error
+                if (errorStr.contains('access') ||
+                    errorStr.contains('not allowed') ||
+                    errorStr.contains('permission')) {
+                  return EmptyStateWidget(
+                    title: 'Access Restricted',
+                    subtitle: 'Payslips are only available to employees with HR access. Please contact your administrator.',
+                    icon: Icons.lock_outlined,
+                  );
+                }
+                return AppErrorWidget(
+                  message: 'Failed to load payslips',
+                  details: error.toString(),
+                  onRetry: () => ref.refresh(payslipsProvider),
+                );
+              },
               data: (payslips) {
                 final filteredPayslips = _filterPayslips(payslips);
 
