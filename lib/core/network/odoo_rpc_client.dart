@@ -39,6 +39,19 @@ class OdooRpcClient {
     _password = password;
   }
 
+  // Update credentials with server URL (used for session restoration)
+  void updateCredentialsWithServer({
+    required String serverUrl,
+    required String database,
+    required int uid,
+    required String password,
+  }) {
+    _dioClient.updateBaseUrl(serverUrl);
+    _database = database;
+    _uid = uid;
+    _password = password;
+  }
+
   // Clear credentials on logout
   void clearCredentials() {
     _database = null;

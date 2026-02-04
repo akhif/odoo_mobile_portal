@@ -1,101 +1,86 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/error_widget.dart';
 import '../../../../core/widgets/loading_shimmer.dart';
+import '../../data/models/invoice_model.dart';
+import '../providers/sales_provider.dart';
 
-class CustomerCreditScreen extends StatefulWidget {
+class CustomerCreditScreen extends ConsumerWidget {
   const CustomerCreditScreen({super.key});
 
   @override
-  State<CustomerCreditScreen> createState() => _CustomerCreditScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final customersAsync = ref.watch(customerCreditsProvider);
 
-class _CustomerCreditScreenState extends State<CustomerCreditScreen> {
-  bool _isLoading = true;
-  List<Map<String, dynamic>> _customers = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCustomers();
-  }
-
-  Future<void> _loadCustomers() async {
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _isLoading = false;
-      _customers = [
-        {
-          'id': 1,
-          'name': 'ABC Company Ltd.',
-          'credit_limit': 50000.00,
-          'total_due': 15000.00,
-          'aging_0_30': 5000.00,
-          'aging_31_60': 3000.00,
-          'aging_61_90': 4000.00,
-          'aging_90_plus': 3000.00,
-        },
-        {
-          'id': 2,
-          'name': 'XYZ Trading',
-          'credit_limit': 30000.00,
-          'total_due': 8500.00,
-          'aging_0_30': 8500.00,
-          'aging_31_60': 0.00,
-          'aging_61_90': 0.00,
-          'aging_90_plus': 0.00,
-        },
-        {
-          'id': 3,
-          'name': 'Global Supplies',
-          'credit_limit': 75000.00,
-          'total_due': 45000.00,
-          'aging_0_30': 10000.00,
-          'aging_31_60': 15000.00,
-          'aging_61_90': 12000.00,
-          'aging_90_plus': 8000.00,
-        },
-      ];
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Customer Credit'),
       ),
-      body: _isLoading
-          ? const ListShimmer()
-          : RefreshIndicator(
-              onRefresh: _loadCustomers,
-              child: ListView.separated(
-                padding: EdgeInsets.all(16.w),
-                itemCount: _customers.length,
-                separatorBuilder: (_, __) => SizedBox(height: 16.h),
-                itemBuilder: (context, index) {
-                  final customer = _customers[index];
-                  return _CustomerCreditCard(customer: customer);
-                },
+      body: customersAsync.when(
+        loading: () => const ListShimmer(),
+        error: (error, _) => AppErrorWidget(
+          message: 'Failed to load customer credits',
+          onRetry: () => ref.refresh(customerCreditsProvider),
+        ),
+        data: (customers) {
+          if (customers.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.account_balance_wallet_outlined,
+                    size: 64.sp,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    'No customer credit data available',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ],
               ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.refresh(customerCreditsProvider);
+            },
+            child: ListView.separated(
+              padding: EdgeInsets.all(16.w),
+              itemCount: customers.length,
+              separatorBuilder: (_, __) => SizedBox(height: 16.h),
+              itemBuilder: (context, index) {
+                final customer = customers[index];
+                return _CustomerCreditCard(customer: customer);
+              },
             ),
+          );
+        },
+      ),
     );
   }
 }
 
 class _CustomerCreditCard extends StatelessWidget {
-  final Map<String, dynamic> customer;
+  final CustomerCreditModel customer;
 
   const _CustomerCreditCard({required this.customer});
 
   @override
   Widget build(BuildContext context) {
     final currencyFormat = NumberFormat.currency(symbol: '', decimalDigits: 2);
-    final creditLimit = customer['credit_limit'] as double;
-    final totalDue = customer['total_due'] as double;
-    final usagePercent = (totalDue / creditLimit * 100).clamp(0, 100);
+    final usagePercent = customer.creditLimit > 0
+        ? (customer.creditUsed / customer.creditLimit * 100).clamp(0, 100)
+        : 0.0;
 
     return Card(
       child: Padding(
@@ -105,7 +90,7 @@ class _CustomerCreditCard extends StatelessWidget {
           children: [
             // Header
             Text(
-              customer['name'],
+              customer.partnerName,
               style: TextStyle(
                 fontSize: 18.sp,
                 fontWeight: FontWeight.bold,
@@ -128,7 +113,9 @@ class _CustomerCreditCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      currencyFormat.format(creditLimit),
+                      customer.creditLimit > 0
+                          ? currencyFormat.format(customer.creditLimit)
+                          : 'No limit',
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
@@ -147,7 +134,7 @@ class _CustomerCreditCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      currencyFormat.format(totalDue),
+                      currencyFormat.format(customer.totalDue),
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
@@ -159,65 +146,54 @@ class _CustomerCreditCard extends StatelessWidget {
               ],
             ),
 
-            SizedBox(height: 12.h),
+            if (customer.creditLimit > 0) ...[
+              SizedBox(height: 12.h),
 
-            // Progress Bar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4.r),
-              child: LinearProgressIndicator(
-                value: usagePercent / 100,
-                minHeight: 8.h,
-                backgroundColor: AppColors.divider,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  usagePercent > 80
-                      ? AppColors.error
-                      : usagePercent > 50
-                          ? AppColors.warning
-                          : AppColors.success,
+              // Progress Bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4.r),
+                child: LinearProgressIndicator(
+                  value: usagePercent / 100,
+                  minHeight: 8.h,
+                  backgroundColor: AppColors.divider,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    usagePercent > 80
+                        ? AppColors.error
+                        : usagePercent > 50
+                            ? AppColors.warning
+                            : AppColors.success,
+                  ),
                 ),
               ),
-            ),
-            SizedBox(height: 4.h),
-            Text(
-              '${usagePercent.toStringAsFixed(0)}% of credit used',
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              SizedBox(height: 4.h),
+              Text(
+                '${usagePercent.toStringAsFixed(0)}% of credit used',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
               ),
-            ),
+            ],
 
             SizedBox(height: 16.h),
 
-            // Aging Table
-            Text(
-              'Aging Analysis',
-              style: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            SizedBox(height: 8.h),
+            // Credit Details
             Row(
               children: [
-                _AgingCell(
-                  label: '0-30',
-                  amount: customer['aging_0_30'],
-                  color: AppColors.success,
+                Expanded(
+                  child: _CreditInfoTile(
+                    label: 'Credit Used',
+                    value: currencyFormat.format(customer.creditUsed),
+                    color: AppColors.warning,
+                  ),
                 ),
-                _AgingCell(
-                  label: '31-60',
-                  amount: customer['aging_31_60'],
-                  color: AppColors.info,
-                ),
-                _AgingCell(
-                  label: '61-90',
-                  amount: customer['aging_61_90'],
-                  color: AppColors.warning,
-                ),
-                _AgingCell(
-                  label: '90+',
-                  amount: customer['aging_90_plus'],
-                  color: AppColors.error,
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: _CreditInfoTile(
+                    label: 'Available',
+                    value: currencyFormat.format(customer.creditAvailable),
+                    color: AppColors.success,
+                  ),
                 ),
               ],
             ),
@@ -228,50 +204,45 @@ class _CustomerCreditCard extends StatelessWidget {
   }
 }
 
-class _AgingCell extends StatelessWidget {
+class _CreditInfoTile extends StatelessWidget {
   final String label;
-  final double amount;
+  final String value;
   final Color color;
 
-  const _AgingCell({
+  const _CreditInfoTile({
     required this.label,
-    required this.amount,
+    required this.value,
     required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(symbol: '', decimalDigits: 0);
-
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.all(8.w),
-        margin: EdgeInsets.only(right: 4.w),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8.r),
-        ),
-        child: Column(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10.sp,
-                color: color,
-                fontWeight: FontWeight.w500,
-              ),
+    return Container(
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.sp,
+              color: color,
             ),
-            SizedBox(height: 4.h),
-            Text(
-              currencyFormat.format(amount),
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: color,
-                fontWeight: FontWeight.bold,
-              ),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: color,
+              fontWeight: FontWeight.bold,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

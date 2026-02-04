@@ -21,6 +21,8 @@ import '../features/sales/presentation/screens/invoice_detail_screen.dart';
 import '../features/sales/presentation/screens/customer_credit_screen.dart';
 import '../features/sales/presentation/screens/product_info_screen.dart';
 import '../features/purchase/presentation/screens/purchase_home_screen.dart';
+import '../features/purchase/presentation/screens/purchase_products_screen.dart';
+import '../features/purchase/presentation/screens/suppliers_list_screen.dart';
 import '../features/purchase/presentation/screens/supplier_detail_screen.dart';
 import '../features/purchase/presentation/screens/market_price_screen.dart';
 import '../features/project/presentation/screens/project_home_screen.dart';
@@ -153,6 +155,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/purchase',
         builder: (context, state) => const PurchaseHomeScreen(),
+      ),
+      GoRoute(
+        path: '/purchase/products',
+        builder: (context, state) => const PurchaseProductsScreen(),
+      ),
+      GoRoute(
+        path: '/purchase/suppliers',
+        builder: (context, state) => const SuppliersListScreen(),
       ),
       GoRoute(
         path: '/purchase/suppliers/:id',

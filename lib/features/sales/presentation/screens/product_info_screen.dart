@@ -1,28 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/error_widget.dart';
 import '../../../../core/widgets/loading_shimmer.dart';
+import '../providers/sales_provider.dart';
 
-class ProductInfoScreen extends StatefulWidget {
+class ProductInfoScreen extends ConsumerStatefulWidget {
   const ProductInfoScreen({super.key});
 
   @override
-  State<ProductInfoScreen> createState() => _ProductInfoScreenState();
+  ConsumerState<ProductInfoScreen> createState() => _ProductInfoScreenState();
 }
 
-class _ProductInfoScreenState extends State<ProductInfoScreen> {
+class _ProductInfoScreenState extends ConsumerState<ProductInfoScreen> {
   final _searchController = TextEditingController();
-  bool _isLoading = true;
-  List<Map<String, dynamic>> _products = [];
-  List<Map<String, dynamic>> _filteredProducts = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProducts();
-  }
+  String _searchQuery = '';
 
   @override
   void dispose() {
@@ -30,68 +25,15 @@ class _ProductInfoScreenState extends State<ProductInfoScreen> {
     super.dispose();
   }
 
-  Future<void> _loadProducts() async {
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _isLoading = false;
-      _products = [
-        {
-          'id': 1,
-          'name': 'Product A - Standard',
-          'default_code': 'PROD-A-001',
-          'list_price': 250.00,
-          'qty_available': 150,
-          'virtual_available': 120,
-        },
-        {
-          'id': 2,
-          'name': 'Product B - Premium',
-          'default_code': 'PROD-B-001',
-          'list_price': 450.00,
-          'qty_available': 75,
-          'virtual_available': 50,
-        },
-        {
-          'id': 3,
-          'name': 'Product C - Economy',
-          'default_code': 'PROD-C-001',
-          'list_price': 120.00,
-          'qty_available': 0,
-          'virtual_available': -20,
-        },
-        {
-          'id': 4,
-          'name': 'Product D - Deluxe',
-          'default_code': 'PROD-D-001',
-          'list_price': 800.00,
-          'qty_available': 25,
-          'virtual_available': 25,
-        },
-      ];
-      _filteredProducts = _products;
-    });
-  }
-
-  void _filterProducts(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredProducts = _products;
-      } else {
-        _filteredProducts = _products.where((product) {
-          final name = product['name'].toString().toLowerCase();
-          final code = product['default_code'].toString().toLowerCase();
-          final searchLower = query.toLowerCase();
-          return name.contains(searchLower) || code.contains(searchLower);
-        }).toList();
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    final productsAsync = _searchQuery.isNotEmpty
+        ? ref.watch(productSearchProvider(_searchQuery))
+        : ref.watch(productsProvider);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Product Info'),
+        title: const Text('Products'),
       ),
       body: Column(
         children: [
@@ -108,41 +50,81 @@ class _ProductInfoScreenState extends State<ProductInfoScreen> {
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _searchController.clear();
-                          _filterProducts('');
+                          setState(() {
+                            _searchQuery = '';
+                          });
                         },
                       )
                     : null,
               ),
-              onChanged: _filterProducts,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
             ),
           ),
 
           // Product List
           Expanded(
-            child: _isLoading
-                ? const ListShimmer()
-                : _filteredProducts.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No products found',
+            child: productsAsync.when(
+              loading: () => const ListShimmer(),
+              error: (error, _) => AppErrorWidget(
+                message: 'Failed to load products',
+                onRetry: () {
+                  if (_searchQuery.isNotEmpty) {
+                    ref.refresh(productSearchProvider(_searchQuery));
+                  } else {
+                    ref.refresh(productsProvider);
+                  }
+                },
+              ),
+              data: (products) {
+                if (products.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.inventory_2_outlined,
+                          size: 64.sp,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                        ),
+                        SizedBox(height: 16.h),
+                        Text(
+                          _searchQuery.isNotEmpty
+                              ? 'No products found for "$_searchQuery"'
+                              : 'No products available',
                           style: TextStyle(
                             fontSize: 16.sp,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                           ),
                         ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadProducts,
-                        child: ListView.separated(
-                          padding: EdgeInsets.symmetric(horizontal: 16.w),
-                          itemCount: _filteredProducts.length,
-                          separatorBuilder: (_, __) => SizedBox(height: 12.h),
-                          itemBuilder: (context, index) {
-                            final product = _filteredProducts[index];
-                            return _ProductCard(product: product);
-                          },
-                        ),
-                      ),
+                      ],
+                    ),
+                  );
+                }
+
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    if (_searchQuery.isNotEmpty) {
+                      ref.refresh(productSearchProvider(_searchQuery));
+                    } else {
+                      ref.refresh(productsProvider);
+                    }
+                  },
+                  child: ListView.separated(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    itemCount: products.length,
+                    separatorBuilder: (_, __) => SizedBox(height: 12.h),
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      return _ProductCard(product: product);
+                    },
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -158,7 +140,7 @@ class _ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currencyFormat = NumberFormat.currency(symbol: '', decimalDigits: 2);
-    final qtyAvailable = product['qty_available'] as int;
+    final qtyAvailable = (product['qty_available'] as num?)?.toDouble() ?? 0.0;
     final isOutOfStock = qtyAvailable <= 0;
     final isLowStock = qtyAvailable > 0 && qtyAvailable <= 20;
 
@@ -176,20 +158,23 @@ class _ProductCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        product['name'],
+                        product['name']?.toString() ?? 'Unknown Product',
                         style: TextStyle(
                           fontSize: 16.sp,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        product['default_code'],
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      if (product['default_code'] != null &&
+                          product['default_code'] != false) ...[
+                        SizedBox(height: 4.h),
+                        Text(
+                          product['default_code'].toString(),
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -214,7 +199,9 @@ class _ProductCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      currencyFormat.format(product['list_price']),
+                      currencyFormat.format(
+                        (product['list_price'] as num?)?.toDouble() ?? 0.0,
+                      ),
                       style: TextStyle(
                         fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
@@ -234,7 +221,7 @@ class _ProductCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '$qtyAvailable units',
+                      '${qtyAvailable.toStringAsFixed(0)} units',
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,

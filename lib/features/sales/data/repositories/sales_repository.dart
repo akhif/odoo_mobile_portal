@@ -155,6 +155,42 @@ class SalesRepository {
     }
   }
 
+  // Get all products
+  Future<List<Map<String, dynamic>>> getProducts({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final result = await _rpcClient.searchRead(
+        model: AppConstants.modelProductTemplate,
+        domain: [
+          ['sale_ok', '=', true],
+        ],
+        fields: ['name', 'default_code', 'list_price', 'qty_available'],
+        limit: limit,
+        offset: offset,
+        order: 'name',
+      );
+
+      return result;
+    } catch (e) {
+      // Fallback without sale_ok filter
+      try {
+        final result = await _rpcClient.searchRead(
+          model: AppConstants.modelProductTemplate,
+          domain: [],
+          fields: ['name', 'default_code', 'list_price', 'qty_available'],
+          limit: limit,
+          offset: offset,
+          order: 'name',
+        );
+        return result;
+      } catch (_) {
+        return [];
+      }
+    }
+  }
+
   // Search products
   Future<List<Map<String, dynamic>>> searchProducts(String query) async {
     try {

@@ -28,6 +28,13 @@ final customerCreditsProvider =
   return await repository.getCustomerCredits();
 });
 
+// Products provider (all products)
+final productsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final repository = ref.watch(salesRepositoryProvider);
+  return await repository.getProducts();
+});
+
 // Product search provider
 final productSearchProvider =
     FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, query) async {

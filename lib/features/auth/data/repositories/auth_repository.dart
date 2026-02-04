@@ -86,57 +86,103 @@ class AuthRepository {
 
   // Fetch user roles based on group IDs
   Future<UserRoles> _fetchUserRoles(List<int> groupIds) async {
-    try {
-      // Try to fetch mobile portal groups
-      final mobileGroups = await _rpcClient.searchRead(
-        model: AppConstants.modelGroups,
-        domain: [
-          ['id', 'in', groupIds],
-        ],
-        fields: ['name', 'full_name'],
-      );
+    bool hasSalesAccess = false;
+    bool hasPurchaseAccess = false;
+    bool hasProjectAccess = false;
 
-      bool hasSalesAccess = false;
-      bool hasPurchaseAccess = false;
-      bool hasProjectAccess = false;
+    // First, try to fetch groups if we have group IDs
+    if (groupIds.isNotEmpty) {
+      try {
+        final mobileGroups = await _rpcClient.searchRead(
+          model: AppConstants.modelGroups,
+          domain: [
+            ['id', 'in', groupIds],
+          ],
+          fields: ['name', 'full_name'],
+        );
 
-      for (final group in mobileGroups) {
-        final fullName = group['full_name']?.toString().toLowerCase() ?? '';
-        final name = group['name']?.toString().toLowerCase() ?? '';
+        for (final group in mobileGroups) {
+          final fullName = group['full_name']?.toString().toLowerCase() ?? '';
+          final name = group['name']?.toString().toLowerCase() ?? '';
 
-        // Check for sales access
-        if (fullName.contains('sales') ||
-            name.contains('sales') ||
-            fullName.contains('sale_salesman') ||
-            fullName.contains('sale_manager')) {
-          hasSalesAccess = true;
+          // Check for sales access
+          if (fullName.contains('sales') ||
+              name.contains('sales') ||
+              name.contains('salesman') ||
+              name.contains('salesperson') ||
+              fullName.contains('sale_salesman') ||
+              fullName.contains('sale_manager') ||
+              fullName.contains('account.group_account')) {
+            hasSalesAccess = true;
+          }
+
+          // Check for purchase access
+          if (fullName.contains('purchase') || name.contains('purchase')) {
+            hasPurchaseAccess = true;
+          }
+
+          // Check for project access
+          if (fullName.contains('project') || name.contains('project')) {
+            hasProjectAccess = true;
+          }
         }
+      } catch (_) {
+        // Groups not accessible, try model access detection below
+      }
+    }
 
-        // Check for purchase access
-        if (fullName.contains('purchase') || name.contains('purchase')) {
-          hasPurchaseAccess = true;
-        }
-
-        // Check for project access
-        if (fullName.contains('project') || name.contains('project')) {
-          hasProjectAccess = true;
-        }
+    // If we couldn't determine roles from groups, try model access detection
+    // This is useful for portal users who can't read res.groups
+    if (!hasSalesAccess && !hasPurchaseAccess && !hasProjectAccess) {
+      // Try to detect sales access by checking if user can read invoices
+      try {
+        await _rpcClient.searchRead(
+          model: AppConstants.modelInvoice,
+          domain: [
+            ['move_type', '=', 'out_invoice'],
+          ],
+          fields: ['id'],
+          limit: 1,
+        );
+        hasSalesAccess = true;
+      } catch (_) {
+        // No sales access
       }
 
-      return UserRoles(
-        hasHrAccess: true, // All employees have HR access
-        hasSalesAccess: hasSalesAccess,
-        hasPurchaseAccess: hasPurchaseAccess,
-        hasProjectAccess: hasProjectAccess,
-        groupIds: groupIds,
-      );
-    } catch (e) {
-      // Default to HR only if we can't fetch groups
-      return UserRoles(
-        hasHrAccess: true,
-        groupIds: groupIds,
-      );
+      // Try to detect purchase access by checking if user can read purchase orders
+      try {
+        await _rpcClient.searchRead(
+          model: 'purchase.order',
+          domain: [],
+          fields: ['id'],
+          limit: 1,
+        );
+        hasPurchaseAccess = true;
+      } catch (_) {
+        // No purchase access
+      }
+
+      // Try to detect project access by checking if user can read projects/tasks
+      try {
+        await _rpcClient.searchRead(
+          model: 'project.task',
+          domain: [],
+          fields: ['id'],
+          limit: 1,
+        );
+        hasProjectAccess = true;
+      } catch (_) {
+        // No project access
+      }
     }
+
+    return UserRoles(
+      hasHrAccess: true, // All employees have HR access
+      hasSalesAccess: hasSalesAccess,
+      hasPurchaseAccess: hasPurchaseAccess,
+      hasProjectAccess: hasProjectAccess,
+      groupIds: groupIds,
+    );
   }
 
   // Save session to secure storage
@@ -223,7 +269,9 @@ class AuthRepository {
     final password = await _storage.getPassword();
 
     if (serverUrl != null && database != null && userId != null && password != null) {
-      _rpcClient.updateCredentials(
+      // Use the method that also sets the server URL to ensure DioClient is configured
+      _rpcClient.updateCredentialsWithServer(
+        serverUrl: serverUrl,
         database: database,
         uid: userId,
         password: password,

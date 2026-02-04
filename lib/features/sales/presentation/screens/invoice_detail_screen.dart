@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/error_widget.dart';
+import '../../../../core/widgets/loading_shimmer.dart';
+import '../providers/sales_provider.dart';
 
-class InvoiceDetailScreen extends StatelessWidget {
+class InvoiceDetailScreen extends ConsumerWidget {
   final int invoiceId;
 
   const InvoiceDetailScreen({super.key, required this.invoiceId});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final invoiceAsync = ref.watch(invoiceDetailProvider(invoiceId));
     final currencyFormat = NumberFormat.currency(symbol: '', decimalDigits: 2);
+    final dateFormat = DateFormat('dd MMM yyyy');
 
     return Scaffold(
       appBar: AppBar(
@@ -27,147 +33,218 @@ class InvoiceDetailScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Card
-            Card(
-              child: Padding(
-                padding: EdgeInsets.all(16.w),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: invoiceAsync.when(
+        loading: () => const LoadingShimmer(),
+        error: (error, _) => AppErrorWidget(
+          message: 'Failed to load invoice details',
+          onRetry: () => ref.refresh(invoiceDetailProvider(invoiceId)),
+        ),
+        data: (invoice) {
+          if (invoice == null) {
+            return const Center(child: Text('Invoice not found'));
+          }
+
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(16.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Card
+                Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.w),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                invoice.name,
+                                style: TextStyle(
+                                  fontSize: 20.sp,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            _PaymentStatusBadge(
+                              state: invoice.paymentState,
+                              isOverdue: invoice.isOverdue,
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          invoice.partnerName ?? 'Unknown Customer',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                        SizedBox(height: 16.h),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _InfoItem(
+                                label: 'Invoice Date',
+                                value: invoice.invoiceDate != null
+                                    ? dateFormat.format(invoice.invoiceDate!)
+                                    : '-',
+                              ),
+                            ),
+                            Expanded(
+                              child: _InfoItem(
+                                label: 'Due Date',
+                                value: invoice.invoiceDateDue != null
+                                    ? dateFormat.format(invoice.invoiceDateDue!)
+                                    : '-',
+                                valueColor: invoice.isOverdue ? AppColors.error : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (invoice.currency != null) ...[
+                          SizedBox(height: 8.h),
+                          _InfoItem(
+                            label: 'Currency',
+                            value: invoice.currency!,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: 24.h),
+
+                // Amount Summary
+                Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.w),
+                    child: Column(
+                      children: [
+                        _AmountRow(
+                          label: 'Total',
+                          amount: currencyFormat.format(invoice.amountTotal),
+                          isBold: true,
+                        ),
+                        const Divider(),
+                        _AmountRow(
+                          label: 'Paid',
+                          amount: currencyFormat.format(invoice.amountPaid),
+                          color: AppColors.success,
+                        ),
+                        const Divider(),
+                        _AmountRow(
+                          label: 'Amount Due',
+                          amount: currencyFormat.format(invoice.amountResidual),
+                          isBold: true,
+                          color: invoice.amountResidual > 0
+                              ? (invoice.isOverdue ? AppColors.error : AppColors.warning)
+                              : AppColors.success,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: 24.h),
+
+                // Invoice State Info
+                Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.w),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'INV/2024/000$invoiceId',
+                          'Status Information',
                           style: TextStyle(
-                            fontSize: 20.sp,
+                            fontSize: 16.sp,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                          decoration: BoxDecoration(
-                            color: AppColors.success.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4.r),
-                          ),
-                          child: Text(
-                            'Posted',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: AppColors.success,
-                              fontWeight: FontWeight.w500,
+                        SizedBox(height: 12.h),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _InfoItem(
+                                label: 'Invoice State',
+                                value: invoice.stateLabel,
+                              ),
                             ),
-                          ),
+                            Expanded(
+                              child: _InfoItem(
+                                label: 'Payment State',
+                                value: invoice.paymentStateLabel,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    SizedBox(height: 8.h),
-                    Text(
-                      'ABC Company Ltd.',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _InfoItem(
-                            label: 'Invoice Date',
-                            value: DateFormat('dd MMM yyyy').format(DateTime.now().subtract(const Duration(days: 30))),
-                          ),
-                        ),
-                        Expanded(
-                          child: _InfoItem(
-                            label: 'Due Date',
-                            value: DateFormat('dd MMM yyyy').format(DateTime.now().add(const Duration(days: 15))),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            SizedBox(height: 24.h),
-
-            // Amount Summary
-            Card(
-              child: Padding(
-                padding: EdgeInsets.all(16.w),
-                child: Column(
-                  children: [
-                    _AmountRow(
-                      label: 'Subtotal',
-                      amount: currencyFormat.format(4500.00),
-                    ),
-                    const Divider(),
-                    _AmountRow(
-                      label: 'Tax (5%)',
-                      amount: currencyFormat.format(225.00),
-                    ),
-                    const Divider(),
-                    _AmountRow(
-                      label: 'Total',
-                      amount: currencyFormat.format(4725.00),
-                      isBold: true,
-                    ),
-                    const Divider(),
-                    _AmountRow(
-                      label: 'Paid',
-                      amount: currencyFormat.format(2000.00),
-                      color: AppColors.success,
-                    ),
-                    const Divider(),
-                    _AmountRow(
-                      label: 'Amount Due',
-                      amount: currencyFormat.format(2725.00),
-                      isBold: true,
-                      color: AppColors.warning,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            SizedBox(height: 24.h),
-
-            // Invoice Lines
-            Text(
-              'Items',
-              style: TextStyle(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 12.h),
-            Card(
-              child: Column(
-                children: [
-                  _InvoiceLineItem(
-                    name: 'Product A',
-                    quantity: 10,
-                    unitPrice: 250.00,
-                    total: 2500.00,
                   ),
-                  const Divider(height: 1),
-                  _InvoiceLineItem(
-                    name: 'Product B',
-                    quantity: 5,
-                    unitPrice: 400.00,
-                    total: 2000.00,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PaymentStatusBadge extends StatelessWidget {
+  final String state;
+  final bool isOverdue;
+
+  const _PaymentStatusBadge({required this.state, this.isOverdue = false});
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    String label;
+
+    if (isOverdue) {
+      color = AppColors.error;
+      label = 'Overdue';
+    } else {
+      switch (state) {
+        case 'paid':
+          color = AppColors.success;
+          label = 'Paid';
+          break;
+        case 'partial':
+          color = AppColors.warning;
+          label = 'Partial';
+          break;
+        case 'not_paid':
+          color = AppColors.info;
+          label = 'Open';
+          break;
+        case 'in_payment':
+          color = AppColors.info;
+          label = 'In Payment';
+          break;
+        default:
+          color = AppColors.textSecondary;
+          label = state;
+      }
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4.r),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12.sp,
+          color: color,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -177,8 +254,9 @@ class InvoiceDetailScreen extends StatelessWidget {
 class _InfoItem extends StatelessWidget {
   final String label;
   final String value;
+  final Color? valueColor;
 
-  const _InfoItem({required this.label, required this.value});
+  const _InfoItem({required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
@@ -198,6 +276,7 @@ class _InfoItem extends StatelessWidget {
           style: TextStyle(
             fontSize: 14.sp,
             fontWeight: FontWeight.w500,
+            color: valueColor,
           ),
         ),
       ],
@@ -238,62 +317,6 @@ class _AmountRow extends StatelessWidget {
               fontSize: 14.sp,
               fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
               color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InvoiceLineItem extends StatelessWidget {
-  final String name;
-  final int quantity;
-  final double unitPrice;
-  final double total;
-
-  const _InvoiceLineItem({
-    required this.name,
-    required this.quantity,
-    required this.unitPrice,
-    required this.total,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(symbol: '', decimalDigits: 2);
-
-    return Padding(
-      padding: EdgeInsets.all(12.w),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  '$quantity x ${currencyFormat.format(unitPrice)}',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            currencyFormat.format(total),
-            style: TextStyle(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w500,
             ),
           ),
         ],

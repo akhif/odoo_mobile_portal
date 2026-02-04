@@ -24,6 +24,10 @@ class HrRepository {
     return id != null ? int.tryParse(id) : null;
   }
 
+  Future<int?> get _userId async {
+    return await _storage.getUserId();
+  }
+
   // ==================== PAYSLIPS ====================
 
   Future<List<PayslipModel>> getPayslips({
@@ -160,34 +164,105 @@ class HrRepository {
     bool vacationOnly = false,
   }) async {
     final employeeId = await _employeeId;
-    if (employeeId == null) return [];
+    final userId = await _userId;
 
-    final domain = [
-      ['employee_id', '=', employeeId],
-    ];
+    // Try with employee_id first
+    if (employeeId != null) {
+      try {
+        final result = await _rpcClient.searchRead(
+          model: AppConstants.modelLeave,
+          domain: [
+            ['employee_id', '=', employeeId],
+          ],
+          fields: [
+            'name',
+            'display_name',
+            'holiday_status_id',
+            'date_from',
+            'date_to',
+            'number_of_days',
+            'state',
+            'notes',
+            'employee_id',
+            'create_date',
+            'attachment_ids',
+          ],
+          limit: limit,
+          offset: offset,
+          order: 'create_date desc',
+        );
 
-    final result = await _rpcClient.searchRead(
-      model: AppConstants.modelLeave,
-      domain: domain,
-      fields: [
-        'name',
-        'display_name',
-        'holiday_status_id',
-        'date_from',
-        'date_to',
-        'number_of_days',
-        'state',
-        'notes',
-        'employee_id',
-        'create_date',
-        'attachment_ids',
-      ],
-      limit: limit,
-      offset: offset,
-      order: 'create_date desc',
-    );
+        if (result.isNotEmpty) {
+          return result.map((json) => LeaveRequestModel.fromJson(json)).toList();
+        }
+      } catch (_) {
+        // Try fallback
+      }
+    }
 
-    return result.map((json) => LeaveRequestModel.fromJson(json)).toList();
+    // Fallback: try to query by user_id
+    if (userId != null) {
+      try {
+        final result = await _rpcClient.searchRead(
+          model: AppConstants.modelLeave,
+          domain: [
+            ['user_id', '=', userId],
+          ],
+          fields: [
+            'name',
+            'display_name',
+            'holiday_status_id',
+            'date_from',
+            'date_to',
+            'number_of_days',
+            'state',
+            'notes',
+            'employee_id',
+            'create_date',
+            'attachment_ids',
+          ],
+          limit: limit,
+          offset: offset,
+          order: 'create_date desc',
+        );
+
+        return result.map((json) => LeaveRequestModel.fromJson(json)).toList();
+      } catch (_) {
+        // user_id field might not exist
+      }
+    }
+
+    // Final fallback: try without filter (will return all user's leaves if access rights permit)
+    if (userId != null) {
+      try {
+        final result = await _rpcClient.searchRead(
+          model: AppConstants.modelLeave,
+          domain: [],
+          fields: [
+            'name',
+            'display_name',
+            'holiday_status_id',
+            'date_from',
+            'date_to',
+            'number_of_days',
+            'state',
+            'notes',
+            'employee_id',
+            'create_date',
+            'attachment_ids',
+          ],
+          limit: limit,
+          offset: offset,
+          order: 'create_date desc',
+        );
+
+        return result.map((json) => LeaveRequestModel.fromJson(json)).toList();
+      } catch (_) {
+        // No access
+      }
+    }
+
+    return [];
   }
 
   Future<int> createLeaveRequest({
