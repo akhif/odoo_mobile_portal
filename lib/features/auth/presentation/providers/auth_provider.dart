@@ -73,7 +73,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Get stored server config
       final serverConfig = await _repository.getStoredServerConfig();
 
-      // Check if logged in
+      // Check if logged in (has stored session)
       final isLoggedIn = await _repository.isLoggedIn();
       if (!isLoggedIn) {
         state = state.copyWith(
@@ -83,9 +83,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
 
-      // Try to restore session
-      final user = await _repository.restoreSession();
+      // Get cached user data without re-authenticating
+      // This allows offline app startup and faster loading
+      final user = await _repository.getCurrentUser();
       if (user != null) {
+        // Restore credentials to RPC client from storage
+        await _repository.restoreCredentialsFromStorage();
         state = state.copyWith(
           status: AuthStatus.authenticated,
           user: user,
@@ -98,6 +101,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
         );
       }
     } catch (e) {
+      // On error, still try to use cached data
+      try {
+        final serverConfig = await _repository.getStoredServerConfig();
+        final user = await _repository.getCurrentUser();
+        if (user != null && serverConfig != null) {
+          await _repository.restoreCredentialsFromStorage();
+          state = state.copyWith(
+            status: AuthStatus.authenticated,
+            user: user,
+            serverConfig: serverConfig,
+          );
+          return;
+        }
+      } catch (_) {}
+
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: e.toString(),

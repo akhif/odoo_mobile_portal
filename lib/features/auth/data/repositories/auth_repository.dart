@@ -214,6 +214,23 @@ class AuthRepository {
     );
   }
 
+  // Restore credentials from storage (without re-authenticating)
+  // This is used for fast app startup
+  Future<void> restoreCredentialsFromStorage() async {
+    final serverUrl = await _storage.getServerUrl();
+    final database = await _storage.getDatabase();
+    final userId = await _storage.getUserId();
+    final password = await _storage.getPassword();
+
+    if (serverUrl != null && database != null && userId != null && password != null) {
+      _rpcClient.updateCredentials(
+        database: database,
+        uid: userId,
+        password: password,
+      );
+    }
+  }
+
   // Restore session (re-authenticate with stored credentials)
   Future<UserModel?> restoreSession() async {
     final serverUrl = await _storage.getServerUrl();

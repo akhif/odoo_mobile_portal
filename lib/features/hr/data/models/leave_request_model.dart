@@ -88,7 +88,7 @@ class LeaveRequestModel {
 class LeaveTypeModel {
   final int id;
   final String name;
-  final String? color;
+  final int? color;
   final double? maxDays;
   final bool requiresAllocation;
   final double? remainingDays;
@@ -106,7 +106,7 @@ class LeaveTypeModel {
     return LeaveTypeModel(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
-      color: json['color'] as String?,
+      color: json['color'] as int?,
       maxDays: (json['max_days'] as num?)?.toDouble(),
       requiresAllocation: json['requires_allocation'] as bool? ?? false,
       remainingDays: (json['remaining_days'] as num?)?.toDouble(),

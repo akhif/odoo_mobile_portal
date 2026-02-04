@@ -128,13 +128,30 @@ class HrRepository {
   // ==================== LEAVE REQUESTS ====================
 
   Future<List<LeaveTypeModel>> getLeaveTypes() async {
-    final result = await _rpcClient.searchRead(
-      model: AppConstants.modelLeaveType,
-      domain: [],
-      fields: ['name', 'color', 'max_days', 'requires_allocation'],
-    );
+    try {
+      // Try with basic fields that should exist in all Odoo versions
+      final result = await _rpcClient.searchRead(
+        model: AppConstants.modelLeaveType,
+        domain: [
+          ['active', '=', true],
+        ],
+        fields: ['name', 'color'],
+      );
 
-    return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
+      return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
+    } catch (e) {
+      // Fallback: try without domain filter
+      try {
+        final result = await _rpcClient.searchRead(
+          model: AppConstants.modelLeaveType,
+          domain: [],
+          fields: ['name'],
+        );
+        return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
+      } catch (_) {
+        return [];
+      }
+    }
   }
 
   Future<List<LeaveRequestModel>> getLeaveRequests({

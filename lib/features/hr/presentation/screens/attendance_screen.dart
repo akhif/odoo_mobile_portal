@@ -23,8 +23,11 @@ class AttendanceScreen extends ConsumerStatefulWidget {
 
 class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   CameraController? _cameraController;
+  List<CameraDescription> _cameras = [];
+  int _currentCameraIndex = 0;
   bool _isCameraInitialized = false;
   bool _isCapturing = false;
+  bool _isGettingLocation = false;
   LocationResult? _currentLocation;
   String? _locationError;
 
@@ -37,44 +40,70 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   Future<void> _initCamera() async {
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) return;
+      _cameras = await availableCameras();
+      if (_cameras.isEmpty) return;
 
-      // Use front camera if available
-      final frontCamera = cameras.firstWhere(
+      // Default to front camera if available
+      _currentCameraIndex = _cameras.indexWhere(
         (camera) => camera.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
       );
+      if (_currentCameraIndex == -1) _currentCameraIndex = 0;
 
-      _cameraController = CameraController(
-        frontCamera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-
-      await _cameraController!.initialize();
-
-      if (mounted) {
-        setState(() {
-          _isCameraInitialized = true;
-        });
-      }
+      await _setupCamera(_cameras[_currentCameraIndex]);
     } catch (e) {
       debugPrint('Camera init error: $e');
     }
   }
 
+  Future<void> _setupCamera(CameraDescription camera) async {
+    if (_cameraController != null) {
+      await _cameraController!.dispose();
+    }
+
+    setState(() {
+      _isCameraInitialized = false;
+    });
+
+    _cameraController = CameraController(
+      camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+
+    await _cameraController!.initialize();
+
+    if (mounted) {
+      setState(() {
+        _isCameraInitialized = true;
+      });
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_cameras.length < 2) return;
+
+    _currentCameraIndex = (_currentCameraIndex + 1) % _cameras.length;
+    await _setupCamera(_cameras[_currentCameraIndex]);
+  }
+
   Future<void> _getLocation() async {
+    setState(() {
+      _isGettingLocation = true;
+      _locationError = null;
+    });
+
     final location = await LocationUtils.getCurrentLocation();
 
     if (mounted) {
       if (location == null) {
         setState(() {
-          _locationError = 'Unable to get location. Please enable GPS.';
+          _isGettingLocation = false;
+          _locationError = 'Unable to get location. Please enable GPS and grant location permission.';
         });
       } else {
         final validation = LocationUtils.validateForAttendance(location);
         setState(() {
+          _isGettingLocation = false;
           _currentLocation = location;
           _locationError = validation.isValid ? null : validation.message;
         });
@@ -202,22 +231,47 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                 padding: EdgeInsets.all(16.w),
                 child: Column(
                   children: [
-                    // Camera
-                    Container(
-                      height: 250.h,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12.r),
-                        child: _isCameraInitialized && _cameraController != null
-                            ? CameraPreview(_cameraController!)
-                            : const Center(
-                                child: CircularProgressIndicator(color: Colors.white),
+                    // Camera with switch button
+                    Stack(
+                      children: [
+                        Container(
+                          height: 250.h,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12.r),
+                            child: _isCameraInitialized && _cameraController != null
+                                ? CameraPreview(_cameraController!)
+                                : const Center(
+                                    child: CircularProgressIndicator(color: Colors.white),
+                                  ),
+                          ),
+                        ),
+                        // Camera switch button
+                        if (_cameras.length > 1)
+                          Positioned(
+                            top: 8.h,
+                            right: 8.w,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(20.r),
                               ),
-                      ),
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.cameraswitch,
+                                  color: Colors.white,
+                                  size: 24.sp,
+                                ),
+                                onPressed: _switchCamera,
+                                tooltip: 'Switch Camera',
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
 
                     SizedBox(height: 16.h),
@@ -226,48 +280,79 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     Container(
                       padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
-                        color: _locationError != null
-                            ? AppColors.error.withOpacity(0.1)
-                            : AppColors.success.withOpacity(0.1),
+                        color: _isGettingLocation
+                            ? AppColors.info.withOpacity(0.1)
+                            : _locationError != null
+                                ? AppColors.error.withOpacity(0.1)
+                                : AppColors.success.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8.r),
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            _locationError != null ? Icons.location_off : Icons.location_on,
-                            color: _locationError != null ? AppColors.error : AppColors.success,
-                            size: 20.sp,
-                          ),
+                          if (_isGettingLocation)
+                            SizedBox(
+                              width: 20.sp,
+                              height: 20.sp,
+                              child: const CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            Icon(
+                              _locationError != null ? Icons.location_off : Icons.location_on,
+                              color: _locationError != null ? AppColors.error : AppColors.success,
+                              size: 20.sp,
+                            ),
                           SizedBox(width: 8.w),
                           Expanded(
-                            child: _currentLocation != null && _locationError == null
-                                ? Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Location Verified',
-                                        style: TextStyle(
-                                          fontSize: 14.sp,
-                                          fontWeight: FontWeight.w500,
-                                          color: AppColors.success,
-                                        ),
-                                      ),
-                                      Text(
-                                        'Accuracy: ${_currentLocation!.accuracy.toStringAsFixed(0)}m',
-                                        style: TextStyle(
-                                          fontSize: 12.sp,
-                                          color: AppColors.success,
-                                        ),
-                                      ),
-                                    ],
+                            child: _isGettingLocation
+                                ? Text(
+                                    'Getting location...',
+                                    style: TextStyle(fontSize: 14.sp),
                                   )
-                                : Text(
-                                    _locationError ?? 'Getting location...',
-                                    style: TextStyle(
-                                      fontSize: 14.sp,
-                                      color: _locationError != null ? AppColors.error : null,
-                                    ),
-                                  ),
+                                : _currentLocation != null && _locationError == null
+                                    ? Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Location Verified',
+                                            style: TextStyle(
+                                              fontSize: 14.sp,
+                                              fontWeight: FontWeight.w500,
+                                              color: AppColors.success,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Accuracy: ${_currentLocation!.accuracy.toStringAsFixed(0)}m',
+                                            style: TextStyle(
+                                              fontSize: 12.sp,
+                                              color: AppColors.success,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            _locationError ?? 'Location unavailable',
+                                            style: TextStyle(
+                                              fontSize: 14.sp,
+                                              color: AppColors.error,
+                                            ),
+                                          ),
+                                          SizedBox(height: 4.h),
+                                          GestureDetector(
+                                            onTap: () => LocationUtils.openLocationSettings(),
+                                            child: Text(
+                                              'Tap to open GPS settings',
+                                              style: TextStyle(
+                                                fontSize: 12.sp,
+                                                color: AppColors.primary,
+                                                decoration: TextDecoration.underline,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                           ),
                           IconButton(
                             icon: const Icon(Icons.refresh),

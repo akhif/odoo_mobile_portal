@@ -122,7 +122,7 @@ class OdooRpcClient {
     }
   }
 
-  // Authenticate user
+  // Authenticate user (supports both internal and portal users)
   Future<AuthResult> authenticate({
     required String serverUrl,
     required String database,
@@ -131,17 +131,36 @@ class OdooRpcClient {
   }) async {
     _dioClient.updateBaseUrl(serverUrl);
 
-    final result = await _rpcCall(
-      service: ApiConstants.serviceCommon,
-      method: ApiConstants.methodAuthenticate,
-      args: [database, username, password, {}],
+    // Use web session authentication (works for portal and internal users)
+    final payload = {
+      'jsonrpc': '2.0',
+      'method': 'call',
+      'params': {
+        'db': database,
+        'login': username,
+        'password': password,
+      },
+      'id': _nextId,
+    };
+
+    final response = await _dioClient.post(
+      ApiConstants.sessionEndpoint,
+      data: payload,
     );
 
-    if (result == false) {
+    final data = response.data;
+
+    if (data['error'] != null) {
+      throw OdooRpcException.fromResponse(data['error']);
+    }
+
+    final result = data['result'];
+    if (result == null || result['uid'] == null || result['uid'] == false) {
       throw AuthenticationException('Invalid username or password');
     }
 
-    final uid = result as int;
+    final uid = result['uid'] as int;
+    final sessionName = result['name'] ?? result['username'] ?? username;
 
     // Store credentials for future calls
     updateCredentials(
@@ -150,42 +169,57 @@ class OdooRpcClient {
       password: password,
     );
 
-    // Get user info
-    final userInfo = await searchRead(
-      model: 'res.users',
-      domain: [
-        ['id', '=', uid]
-      ],
-      fields: ['name', 'login', 'partner_id', 'employee_ids', 'groups_id'],
-    );
-
+    // Try to get additional user info (may fail for portal users)
     String? employeeId;
     String? employeeName;
+    List<int> groupIds = [];
+    String userName = sessionName;
 
-    if (userInfo.isNotEmpty && userInfo[0]['employee_ids'] != null) {
-      final employeeIds = List<int>.from(userInfo[0]['employee_ids']);
-      if (employeeIds.isNotEmpty) {
-        final employee = await searchRead(
-          model: 'hr.employee',
-          domain: [
-            ['id', '=', employeeIds[0]]
-          ],
-          fields: ['id', 'name'],
-        );
-        if (employee.isNotEmpty) {
-          employeeId = employee[0]['id'].toString();
-          employeeName = employee[0]['name'];
+    try {
+      final userInfo = await searchRead(
+        model: 'res.users',
+        domain: [
+          ['id', '=', uid]
+        ],
+        fields: ['name', 'login', 'partner_id', 'employee_ids', 'groups_id'],
+      );
+
+      if (userInfo.isNotEmpty) {
+        userName = userInfo[0]['name'] ?? sessionName;
+        groupIds = List<int>.from(userInfo[0]['groups_id'] ?? []);
+
+        if (userInfo[0]['employee_ids'] != null) {
+          final employeeIds = List<int>.from(userInfo[0]['employee_ids']);
+          if (employeeIds.isNotEmpty) {
+            try {
+              final employee = await searchRead(
+                model: 'hr.employee',
+                domain: [
+                  ['id', '=', employeeIds[0]]
+                ],
+                fields: ['id', 'name'],
+              );
+              if (employee.isNotEmpty) {
+                employeeId = employee[0]['id'].toString();
+                employeeName = employee[0]['name'];
+              }
+            } catch (_) {
+              // Employee info not accessible
+            }
+          }
         }
       }
+    } catch (_) {
+      // User info not accessible (portal user with limited access)
     }
 
     return AuthResult(
       uid: uid,
       username: username,
-      name: userInfo.isNotEmpty ? userInfo[0]['name'] : username,
+      name: userName,
       employeeId: employeeId,
       employeeName: employeeName,
-      groupIds: userInfo.isNotEmpty ? List<int>.from(userInfo[0]['groups_id'] ?? []) : [],
+      groupIds: groupIds,
     );
   }
 
