@@ -22,6 +22,7 @@ dependencies:
   # Storage & Security
   flutter_secure_storage: ^9.0.0
   shared_preferences: ^2.2.2
+  path_provider: ^2.1.2
 
   # Models & Serialization
   freezed_annotation: ^2.4.1

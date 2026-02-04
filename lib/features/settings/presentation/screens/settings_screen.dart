@@ -201,6 +201,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: TextStyle(fontSize: 12.sp),
                   ),
                 ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.system_update_outlined),
+                  title: const Text('Check for Updates'),
+                  subtitle: Text(
+                    'Get the latest version from GitHub',
+                    style: TextStyle(fontSize: 12.sp),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/settings/updates'),
+                ),
               ],
             ),
           ),

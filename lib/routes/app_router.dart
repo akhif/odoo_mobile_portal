@@ -29,6 +29,7 @@ import '../features/project/presentation/screens/project_home_screen.dart';
 import '../features/project/presentation/screens/job_order_list_screen.dart';
 import '../features/project/presentation/screens/job_order_detail_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
+import '../features/settings/presentation/screens/app_update_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -197,6 +198,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/updates',
+        builder: (context, state) => const AppUpdateScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
