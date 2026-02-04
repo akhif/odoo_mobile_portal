@@ -32,11 +32,11 @@ dependencies:
   permission_handler: ^11.1.0
   camera: ^0.10.5+9
   image_picker: ^1.0.7
-  file_picker: ^6.1.1
+  file_picker: ^10.0.0
   flutter_image_compress: ^2.1.0
 
   # PDF & Files
-  syncfusion_flutter_pdfviewer: ^24.1.41
+  syncfusion_flutter_pdfviewer: ^32.0.0
   open_filex: ^4.3.4
   share_plus: ^7.2.1
 
@@ -48,8 +48,11 @@ dependencies:
   # Utils
   logger: ^2.0.2+1
   intl: ^0.18.1
-  package_info_plus: ^5.0.1
+  package_info_plus: ^9.0.0
   cupertino_icons: ^1.0.6
+
+dependency_overrides:
+  win32: ^5.15.0
 
 dev_dependencies:
   flutter_test:
