@@ -46,31 +46,39 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _checkAuthStatus() async {
-    // Wait for animation and auth check
-    await Future.wait([
-      Future.delayed(const Duration(milliseconds: 2000)),
-      ref.read(authProvider.notifier).checkAuthStatus(),
-    ]);
+    try {
+      // Wait for animation and auth check
+      await Future.wait([
+        Future.delayed(const Duration(milliseconds: 2000)),
+        ref.read(authProvider.notifier).checkAuthStatus(),
+      ]);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    final authState = ref.read(authProvider);
+      final authState = ref.read(authProvider);
 
-    switch (authState.status) {
-      case AuthStatus.authenticated:
-        context.go('/dashboard');
-        break;
-      case AuthStatus.unauthenticated:
-        context.go('/login');
-        break;
-      case AuthStatus.serverSetupRequired:
+      switch (authState.status) {
+        case AuthStatus.authenticated:
+          context.go('/dashboard');
+          break;
+        case AuthStatus.unauthenticated:
+          context.go('/login');
+          break;
+        case AuthStatus.serverSetupRequired:
+          context.go('/server-setup');
+          break;
+        case AuthStatus.error:
+          context.go('/server-setup');
+          break;
+        default:
+          context.go('/server-setup');
+      }
+    } catch (e) {
+      // If any error occurs during auth check, navigate to server setup
+      debugPrint('Splash auth check error: $e');
+      if (mounted) {
         context.go('/server-setup');
-        break;
-      case AuthStatus.error:
-        context.go('/server-setup');
-        break;
-      default:
-        context.go('/server-setup');
+      }
     }
   }
 
