@@ -46,3 +46,4 @@ app.*.map.json
 *.apk
 android/app/build/
 android/build/
+android/app/.cxx/

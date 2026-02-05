@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/odoo_rpc_client.dart';
 import '../../../../core/storage/secure_storage_service.dart';
@@ -36,7 +38,16 @@ class HrRepository {
   // Helper to find employee record by user_id
   Future<int?> _findEmployeeByUserId() async {
     final userId = await _userId;
-    if (userId == null) return null;
+    if (userId == null) {
+      if (kDebugMode) {
+        debugPrint('_findEmployeeByUserId: No user ID available');
+      }
+      return null;
+    }
+
+    if (kDebugMode) {
+      debugPrint('_findEmployeeByUserId: Looking for employee with user_id = $userId');
+    }
 
     try {
       final result = await _rpcClient.searchRead(
@@ -44,21 +55,34 @@ class HrRepository {
         domain: [
           ['user_id', '=', userId],
         ],
-        fields: ['id', 'name'],
+        fields: ['id', 'name', 'user_id'],
         limit: 1,
       );
 
+      if (kDebugMode) {
+        debugPrint('_findEmployeeByUserId: Query returned ${result.length} results');
+        if (result.isNotEmpty) {
+          debugPrint('_findEmployeeByUserId: Found employee: ${result[0]}');
+        }
+      }
+
       if (result.isNotEmpty) {
         final empId = result[0]['id'] as int;
+        final empName = result[0]['name']?.toString() ?? '';
         // Cache the employee ID for future use
         await _storage.updateEmployeeInfo(
           employeeId: empId.toString(),
-          employeeName: result[0]['name']?.toString() ?? '',
+          employeeName: empName,
         );
+        if (kDebugMode) {
+          debugPrint('_findEmployeeByUserId: Cached employee id=$empId, name=$empName');
+        }
         return empId;
       }
-    } catch (_) {
-      // Employee lookup failed
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('_findEmployeeByUserId: Error - $e');
+      }
     }
     return null;
   }
@@ -167,8 +191,12 @@ class HrRepository {
   // ==================== LEAVE REQUESTS ====================
 
   Future<List<LeaveTypeModel>> getLeaveTypes() async {
+    if (kDebugMode) {
+      debugPrint('Fetching leave types...');
+    }
+
+    // Strategy 1: Try with active filter and basic fields
     try {
-      // Try with basic fields that should exist in all Odoo versions
       final result = await _rpcClient.searchRead(
         model: AppConstants.modelLeaveType,
         domain: [
@@ -177,20 +205,82 @@ class HrRepository {
         fields: ['name', 'color'],
       );
 
-      return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
-    } catch (e) {
-      // Fallback: try without domain filter
-      try {
-        final result = await _rpcClient.searchRead(
-          model: AppConstants.modelLeaveType,
-          domain: [],
-          fields: ['name'],
-        );
+      if (kDebugMode) {
+        debugPrint('Found ${result.length} leave types (with active filter)');
+      }
+
+      if (result.isNotEmpty) {
         return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
-      } catch (_) {
-        return [];
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Leave types query with active filter failed: $e');
       }
     }
+
+    // Strategy 2: Try without domain filter
+    try {
+      final result = await _rpcClient.searchRead(
+        model: AppConstants.modelLeaveType,
+        domain: [],
+        fields: ['name', 'color'],
+      );
+
+      if (kDebugMode) {
+        debugPrint('Found ${result.length} leave types (without filter)');
+      }
+
+      if (result.isNotEmpty) {
+        return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Leave types query without filter failed: $e');
+      }
+    }
+
+    // Strategy 3: Try with only name field (minimal access)
+    try {
+      final result = await _rpcClient.searchRead(
+        model: AppConstants.modelLeaveType,
+        domain: [],
+        fields: ['name'],
+      );
+
+      if (kDebugMode) {
+        debugPrint('Found ${result.length} leave types (name only)');
+      }
+
+      return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Leave types minimal query failed: $e');
+      }
+    }
+
+    // Strategy 4: If model doesn't exist, try alternative model name
+    try {
+      final result = await _rpcClient.searchRead(
+        model: 'hr.holidays.status',
+        domain: [],
+        fields: ['name'],
+      );
+
+      if (kDebugMode) {
+        debugPrint('Found ${result.length} leave types from hr.holidays.status');
+      }
+
+      return result.map((json) => LeaveTypeModel.fromJson(json)).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('hr.holidays.status query failed: $e');
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint('All leave type queries failed, returning empty list');
+    }
+    return [];
   }
 
   Future<List<LeaveRequestModel>> getLeaveRequests({

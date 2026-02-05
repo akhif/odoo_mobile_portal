@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/network_exceptions.dart';
 import '../../../../core/network/odoo_rpc_client.dart';
@@ -67,21 +69,69 @@ class AuthRepository {
 
     // If employee ID not found from auth, try to find it directly
     if (employeeId == null) {
+      if (kDebugMode) {
+        debugPrint('Employee ID not found from auth, trying direct lookup for user ${authResult.uid}');
+      }
       try {
+        // Try to find employee by user_id (use .id to get the relation ID)
         final employees = await _rpcClient.searchRead(
           model: 'hr.employee',
           domain: [
             ['user_id', '=', authResult.uid],
           ],
-          fields: ['id', 'name'],
+          fields: ['id', 'name', 'user_id'],
           limit: 1,
         );
         if (employees.isNotEmpty) {
           employeeId = employees[0]['id'] as int;
           employeeName = employees[0]['name'] as String?;
+          if (kDebugMode) {
+            debugPrint('Found employee: id=$employeeId, name=$employeeName');
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('No employee found with user_id = ${authResult.uid}');
+          }
         }
-      } catch (_) {
-        // hr.employee access denied - that's OK
+      } catch (e) {
+        // hr.employee access denied - that's OK for portal users
+        if (kDebugMode) {
+          debugPrint('Employee lookup failed: $e');
+        }
+      }
+    }
+
+    // Also try to query using res.users employee_id field as last resort
+    if (employeeId == null) {
+      if (kDebugMode) {
+        debugPrint('Trying employee lookup via res.users employee_id field');
+      }
+      try {
+        final userInfo = await _rpcClient.searchRead(
+          model: 'res.users',
+          domain: [
+            ['id', '=', authResult.uid],
+          ],
+          fields: ['employee_id'],
+          limit: 1,
+        );
+        if (userInfo.isNotEmpty && userInfo[0]['employee_id'] != null) {
+          // employee_id can be [id, name] tuple or just false
+          final empData = userInfo[0]['employee_id'];
+          if (empData is List && empData.isNotEmpty) {
+            employeeId = empData[0] as int;
+            if (empData.length > 1) {
+              employeeName = empData[1] as String?;
+            }
+            if (kDebugMode) {
+              debugPrint('Found employee from res.users: id=$employeeId, name=$employeeName');
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('res.users employee_id lookup failed: $e');
+        }
       }
     }
 
@@ -116,6 +166,10 @@ class AuthRepository {
     bool hasProjectAccess = false;
     bool foundMobileGroups = false;
 
+    if (kDebugMode) {
+      debugPrint('Fetching user roles for groupIds: $groupIds');
+    }
+
     // First, try to fetch groups if we have group IDs
     if (groupIds.isNotEmpty) {
       try {
@@ -127,25 +181,41 @@ class AuthRepository {
           fields: ['name', 'full_name', 'category_id'],
         );
 
+        if (kDebugMode) {
+          debugPrint('Found ${userGroups.length} groups');
+          for (final g in userGroups) {
+            debugPrint('  Group: name="${g['name']}", full_name="${g['full_name']}"');
+          }
+        }
+
         for (final group in userGroups) {
           final fullName = group['full_name']?.toString().toLowerCase() ?? '';
           final name = group['name']?.toString().toLowerCase() ?? '';
 
           // Priority 1: Check for Mobile Portal specific groups
           // These are the groups from our custom mobile_portal Odoo module
+          // Match various naming patterns: "Mobile HR Access", "Mobile Sales Access", etc.
           if (fullName.contains('mobile') || name.contains('mobile')) {
             foundMobileGroups = true;
+            if (kDebugMode) {
+              debugPrint('  -> Mobile group found: $name');
+            }
             if (name.contains('hr') || fullName.contains('hr')) {
               hasHrAccess = true;
+              if (kDebugMode) debugPrint('    -> HR access granted');
             }
-            if (name.contains('sales') || fullName.contains('sales')) {
+            if (name.contains('sales') || fullName.contains('sales') ||
+                name.contains('sale') || fullName.contains('sale')) {
               hasSalesAccess = true;
+              if (kDebugMode) debugPrint('    -> Sales access granted');
             }
             if (name.contains('purchase') || fullName.contains('purchase')) {
               hasPurchaseAccess = true;
+              if (kDebugMode) debugPrint('    -> Purchase access granted');
             }
             if (name.contains('project') || fullName.contains('project')) {
               hasProjectAccess = true;
+              if (kDebugMode) debugPrint('    -> Project access granted');
             }
           }
         }
@@ -153,6 +223,9 @@ class AuthRepository {
         // If mobile portal groups were found, use ONLY those for access control
         // Don't fall back to standard Odoo groups - mobile access should be explicit
         if (foundMobileGroups) {
+          if (kDebugMode) {
+            debugPrint('Using Mobile Portal groups. HR=$hasHrAccess, Sales=$hasSalesAccess, Purchase=$hasPurchaseAccess, Project=$hasProjectAccess');
+          }
           return UserRoles(
             hasHrAccess: hasHrAccess,
             hasSalesAccess: hasSalesAccess,
@@ -163,6 +236,9 @@ class AuthRepository {
         }
 
         // No mobile portal groups found - fall back to standard Odoo group detection
+        if (kDebugMode) {
+          debugPrint('No mobile groups found, checking standard Odoo groups');
+        }
         for (final group in userGroups) {
           final fullName = group['full_name']?.toString().toLowerCase() ?? '';
           final name = group['name']?.toString().toLowerCase() ?? '';
@@ -196,8 +272,16 @@ class AuthRepository {
             hasHrAccess = true;
           }
         }
-      } catch (_) {
-        // Groups not accessible
+      } catch (e) {
+        // Groups not accessible - portal users often can't read res.groups
+        if (kDebugMode) {
+          debugPrint('Error fetching groups: $e');
+          debugPrint('Granting default HR access');
+        }
+      }
+    } else {
+      if (kDebugMode) {
+        debugPrint('No group IDs provided');
       }
     }
 
@@ -205,6 +289,10 @@ class AuthRepository {
     // (all employees should have basic HR access)
     if (!hasHrAccess && !hasSalesAccess && !hasPurchaseAccess && !hasProjectAccess) {
       hasHrAccess = true;
+    }
+
+    if (kDebugMode) {
+      debugPrint('Final roles: HR=$hasHrAccess, Sales=$hasSalesAccess, Purchase=$hasPurchaseAccess, Project=$hasProjectAccess');
     }
 
     return UserRoles(
